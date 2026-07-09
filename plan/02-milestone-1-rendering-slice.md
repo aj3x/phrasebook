@@ -1,0 +1,166 @@
+# Milestone 1 — Rendering Slice
+
+The first thing you'll run.
+
+## Definition of done
+
+You clone the repo, run `docker compose up`, run the demo app, and:
+
+1. `http://localhost:5173` shows a page with a translated headline, a translated paragraph with an ICU plural (`"You have {count, plural, =0 {no items} one {1 item} other {# items}}"`), and a locale switcher.
+2. Changing the locale switcher between `en`, `fr`, `fr-CA`, and `es` re-renders correctly.
+3. Setting locale to `fr-CA` when only `fr` has a translation demonstrates the fallback chain rendering `fr` — no fallback string, no key-name-as-fallback (unless there's no chain match at all).
+4. Changing an item count on the page produces the correct plural form per locale (English `one/other`, French `one/other`, Spanish `one/other`).
+5. A page reload uses HTTP cache (server returns `304 Not Modified` on ETag match, verified in devtools).
+6. Killing the server and reloading uses the SDK's in-memory cache (page still renders; no error UI).
+7. `pnpm test` (or `bun test`) passes on server + core + icu packages.
+8. `docker compose up` from a clean clone produces the above with no extra manual steps beyond a one-time `.env` copy.
+
+That's it. That's the milestone. Everything below is how we get there.
+
+## The vertical slice, in order
+
+Each numbered item is roughly one commit. If any item balloons, we split it — don't let it become "and then I finished M1 in one huge PR."
+
+### 1. Repo skeleton
+
+- [ ] Delete the leftover `create-react-app` scaffolding at the repo root (currently marked `D` in git status).
+- [ ] Create the directory layout from `01-repo-topology.md`.
+- [ ] `pnpm-workspace.yaml`, root `package.json` with workspaces, `tsconfig.base.json` with `"strict": true`.
+- [ ] `biome.json` with sane defaults.
+- [ ] `.gitignore` (Bun, Node, Vite, editor artefacts).
+- [ ] `README.md` at root — a *tiny* one that says "see `plan/`."
+
+**Outcome:** empty repo compiles. `pnpm typecheck` runs and passes with nothing in it.
+
+### 2. `packages/schemas`
+
+- [ ] Zod schemas for the M1 wire types: `LocaleCode`, `NamespaceName`, `TranslationBundle` (`{ locale, namespace, version, keys: Record<string, string> }`).
+- [ ] Export inferred TS types.
+
+**Outcome:** something for the server and SDK to import.
+
+### 3. `packages/icu`
+
+- [ ] Wrap `@formatjs/intl-messageformat` behind two exports: `format(source, locale, values)` and `canonicalize(source)`.
+- [ ] Pin the FormatJS version. Add a `CLDR_VERSION.md` note recording which CLDR version ships with the pinned FormatJS release.
+- [ ] Tests: format an English plural, a French plural, an Arabic plural (six plural categories — proves CLDR is real), and canonicalize two whitespace-different-but-equivalent ICU strings to the same output.
+
+**Outcome:** ICU works and is tested before anyone builds on top of it. If FormatJS is going to bite us on Bun, we find out here.
+
+### 4. `packages/db` — minimal schema
+
+Migrations create *only* what M1 uses:
+
+- [ ] `organizations` (id, name)
+- [ ] `workspaces` (id, org_id, name)  — carried from day 1 per D1
+- [ ] `projects` (id, workspace_id, name, source_locale)
+- [ ] `locales` (id, project_id, code)  — one row per (project, locale)
+- [ ] `namespaces` (id, project_id, name, authority)  — authority in `('code','platform')`
+- [ ] `keys` (id, namespace_id, name, source_text, source_hash)
+- [ ] `translations` (id, key_id, locale_id, target_text, status, updated_at, version)
+- [ ] Kysely codegen from the schema; check into `packages/db/src/generated.ts`.
+
+Deliberately absent from M1: `register`, `assignments`, `comments`, `audit_log`, `content_links`, `snapshots`. Add when their milestone lands. Schema is easier to *extend* than to speculate.
+
+**Outcome:** `pnpm db:migrate` on an empty Postgres produces this schema.
+
+### 5. `apps/server` — Store interface + Postgres driver
+
+- [ ] `Store` interface in `apps/server/src/store/store.ts` — the minimal §6 subset M1 needs: `getBundle(project, locale, namespace) → { keys, version, etag }`, `putTranslation(...)` (used only by the seed for now).
+- [ ] `PostgresStore` implementation in `apps/server/src/store/postgres.ts`.
+- [ ] No git driver, no capability flags yet — but the interface is real and the file layout has room for `git.ts` alongside `postgres.ts`.
+
+**Outcome:** the store abstraction lives from day 1. Adding lite mode later is an implementation swap, not a refactor.
+
+### 6. `apps/server` — Hono app + runtime endpoint
+
+- [ ] Hono app with one route: `GET /v1/runtime/:project/:locale/:namespace` → returns the bundle JSON.
+- [ ] `ETag: "<version>"` header. Respect `If-None-Match` → `304`.
+- [ ] `Cache-Control: public, max-age=60, must-revalidate`.
+- [ ] CORS enabled for `http://localhost:5173`.
+- [ ] Bind `127.0.0.1` by default. Config via env: `DATABASE_URL`, `PORT`, `BIND_ADDR`.
+- [ ] Health endpoint: `GET /health` → `200 OK`.
+
+**Outcome:** `curl http://127.0.0.1:3000/v1/runtime/demo/en/common` returns real JSON.
+
+### 7. Seed script
+
+- [ ] `apps/server/src/seed.ts`: creates a `demo` project with locales `en`, `fr`, `fr-CA`, `es`; namespace `common`; keys `home.hero.title`, `home.hero.subtitle`, `cart.items` (the ICU plural).
+- [ ] Populates translations. `fr-CA` intentionally missing the plural to prove the fallback chain.
+- [ ] Idempotent: re-run leaves the DB in the same state.
+- [ ] Bun script exposed as `bun run seed`.
+
+**Outcome:** `docker compose up` + one command = testable data.
+
+### 8. `packages/core` — the framework-agnostic SDK
+
+- [ ] `createClient({ endpoint, project, namespaces, defaultLocale, fallbackChain? })`.
+- [ ] Bundle fetching with ETag revalidation and in-memory cache keyed by `(locale, namespace, version)`.
+- [ ] Locale-fallback resolution when a key is missing in the requested locale: walk the fallback chain (F10). Default chain derived from BCP-47: `fr-CA → fr → en (source)`. Overridable.
+- [ ] `t(key, values?)` — resolves ICU via `@phrasebook/icu`. Returns the source text if no translation and no chain match (better than exploding in the UI). Logs a warning in dev mode.
+- [ ] Tests: mock the endpoint, verify fallback, verify ICU output, verify ETag revalidation caches.
+
+**Outcome:** SDK works standalone. Any JS project could use it, not just React.
+
+### 9. `packages/react` — React bindings
+
+- [ ] `<PhrasebookProvider client={} locale={} onLocaleChange={}>` — provides the core client + current locale via context.
+- [ ] `useT()` → returns the `t` function bound to the current locale.
+- [ ] `useLocale()` → `[locale, setLocale]`.
+- [ ] Suspense-friendly: initial load throws a promise; components using `useT` suspend until the first bundle is ready. (Alternatively: `isLoading` on the hook. Pick one — I lean Suspense; push back if you'd rather a hook flag.)
+- [ ] Tests: render a component, verify plural + fallback.
+
+**Outcome:** `<h1>{t('home.hero.title')}</h1>` works.
+
+### 10. `apps/demo-web` — the consumer app
+
+- [ ] Vite + React app.
+- [ ] `<PhrasebookProvider>` wired to `http://localhost:3000`.
+- [ ] Page renders the three keys.
+- [ ] Locale switcher (`select` element) — `en / fr / fr-CA / es`.
+- [ ] Item count input (`number` input) — feeds the plural `count`.
+- [ ] Visible in the UI: current locale, resolved locale (after fallback), request URL. Helps debugging without needing devtools.
+
+**Outcome:** the M1 experience. You open the app and see it working.
+
+### 11. Docker compose
+
+- [ ] `docker/docker-compose.yml`: `postgres:16`, `server` (built from `server.Dockerfile`).
+- [ ] Volume for Postgres data.
+- [ ] `docker/server.Dockerfile` from `oven/bun:1-alpine`; multi-stage: install → build → run.
+- [ ] Compose runs migrations + seed on first start (via an entrypoint script).
+- [ ] `.env.example` at repo root: `DATABASE_URL`, `PORT`, `BIND_ADDR`, `NODE_ENV`.
+- [ ] Demo app is *not* in docker (it's a dev-machine Vite server) — keeps `docker compose up` fast.
+
+**Outcome:** the 5-minute path works from a clean clone.
+
+### 12. Documentation for M1
+
+- [ ] Root `README.md` gets a "Try it" section: prerequisites, `cp .env.example .env`, `docker compose up`, `pnpm dev` in `apps/demo-web`, open `http://localhost:5173`.
+- [ ] Short section: "What's in M1 and what isn't." Links to `plan/00-overview.md`.
+
+**Outcome:** anyone (including future-you) can run this without asking.
+
+## Explicit non-goals for M1 (repeat, for emphasis)
+
+- No auth. No API tokens. Server binds localhost.
+- No editor UI.
+- No CLI, no adapters, no extraction.
+- No MT, LLM, plugins.
+- No `needs_update` cascade (there's no editing yet — status is seed-set to `published`).
+- No git driver, no sidecar.
+- No search, glossary, DNT, QA.
+- No SSE. The M1 demo does not need real-time.
+- No CDN-push. Client-pull only.
+
+## Definition of feedback we want after M1
+
+When you've run M1, some questions I'd like your take on before I start M2:
+
+- Does the SDK's `t()` return-source-on-missing behavior feel right, or would you rather see a visible marker (like `[home.hero.title]`)?
+- Is the ETag+in-memory cache combo enough, or do you want a persistent SDK cache (localStorage, IndexedDB) for offline?
+- Editor priorities: keyboard-first spreadsheet-style vs form-per-key vs both?
+- Auth at M2: local username/password only, or OIDC from day 1?
+- Anything in M1 that felt wrong to touch — schema shape, package names, endpoint URL?
+
+More live-updating questions get parked in `04-open-questions.md` as I hit them.
