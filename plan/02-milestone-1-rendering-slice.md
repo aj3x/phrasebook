@@ -21,16 +21,16 @@ That's it. That's the milestone. Everything below is how we get there.
 
 Each numbered item is roughly one commit. If any item balloons, we split it — don't let it become "and then I finished M1 in one huge PR."
 
-### 1. Repo skeleton
+### 1. Repo skeleton ✅
 
-- [ ] Delete the leftover `create-react-app` scaffolding at the repo root (currently marked `D` in git status).
-- [ ] Create the directory layout from `01-repo-topology.md`.
-- [ ] `pnpm-workspace.yaml`, root `package.json` with workspaces, `tsconfig.base.json` with `"strict": true`.
-- [ ] `biome.json` with sane defaults.
-- [ ] `.gitignore` (Bun, Node, Vite, editor artefacts).
-- [ ] `README.md` at root — a *tiny* one that says "see `plan/`."
+- [x] Delete the leftover `create-react-app` scaffolding at the repo root (done in a prior commit).
+- [x] Create the directory layout from `01-repo-topology.md` (`apps/`, `packages/`, `docker/` shells with `.gitkeep`).
+- [x] `pnpm-workspace.yaml`, root `package.json` with workspaces, `tsconfig.base.json` with `"strict": true` + `noUncheckedIndexedAccess`.
+- [x] `biome.json` with sane defaults.
+- [x] `.gitignore` (Bun, Node, Vite, editor, OS, Claude local settings).
+- [x] `README.md` at root — tiny, links to `plan/`.
 
-**Outcome:** empty repo compiles. `pnpm typecheck` runs and passes with nothing in it.
+**Outcome:** ✅ `pnpm install` clean, `pnpm typecheck` exits 0, `pnpm lint` exits 0.
 
 ### 2. `packages/schemas`
 
