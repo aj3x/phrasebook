@@ -32,12 +32,12 @@ Each numbered item is roughly one commit. If any item balloons, we split it — 
 
 **Outcome:** ✅ `pnpm install` clean, `pnpm typecheck` exits 0, `pnpm lint` exits 0.
 
-### 2. `packages/schemas`
+### 2. `packages/schemas` ✅
 
-- [ ] Zod schemas for the M1 wire types: `LocaleCode`, `NamespaceName`, `TranslationBundle` (`{ locale, namespace, version, keys: Record<string, string> }`).
-- [ ] Export inferred TS types.
+- [x] Zod schemas for the M1 wire types: `LocaleCode`, `NamespaceName`, `TranslationBundle` (`{ locale, namespace, version, keys: Record<string, string> }`).
+- [x] Export inferred TS types.
 
-**Outcome:** something for the server and SDK to import.
+**Outcome:** ✅ `@phrasebook/schemas` exports `LocaleCode`, `NamespaceName`, `TranslationBundle` (schema + inferred type) from `src/index.ts`. `bun test` passes (31 tests), `pnpm typecheck` and `pnpm lint` exit 0.
 
 ### 3. `packages/icu`
 
