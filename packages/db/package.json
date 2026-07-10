@@ -1,0 +1,22 @@
+{
+  "name": "@phrasebook/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "db:migrate": "bun run src/cli/migrate.ts"
+  },
+  "dependencies": {
+    "kysely": "^0.29.3",
+    "kysely-postgres-js": "^3.0.0",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.14",
+    "pg-mem": "^3.0.14"
+  }
+}

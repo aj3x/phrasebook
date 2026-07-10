@@ -27,6 +27,18 @@
       }
     }
   },
+  "overrides": [
+    {
+      "include": ["**/migrations/*.ts", "**/migrator.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          }
+        }
+      }
+    }
+  ],
   "formatter": {
     "enabled": true,
     "indentStyle": "space",

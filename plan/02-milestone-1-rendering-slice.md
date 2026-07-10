@@ -47,22 +47,26 @@ Each numbered item is roughly one commit. If any item balloons, we split it — 
 
 **Outcome:** ✅ ICU works and is tested. `bun test` passes (16 tests, 3 files) in `packages/icu`. `pnpm typecheck` and `pnpm lint` exit 0 from repo root.
 
-### 4. `packages/db` — minimal schema
+### 4. `packages/db` — minimal schema ✅
 
 Migrations create *only* what M1 uses:
 
-- [ ] `organizations` (id, name)
-- [ ] `workspaces` (id, org_id, name)  — carried from day 1 per D1
-- [ ] `projects` (id, workspace_id, name, source_locale)
-- [ ] `locales` (id, project_id, code)  — one row per (project, locale)
-- [ ] `namespaces` (id, project_id, name, authority)  — authority in `('code','platform')`
-- [ ] `keys` (id, namespace_id, name, source_text, source_hash)
-- [ ] `translations` (id, key_id, locale_id, target_text, status, updated_at, version)
-- [ ] Kysely codegen from the schema; check into `packages/db/src/generated.ts`.
+- [x] `organizations` (id, name)
+- [x] `workspaces` (id, org_id, name)  — carried from day 1 per D1
+- [x] `projects` (id, workspace_id, name, source_locale)
+- [x] `locales` (id, project_id, code)  — one row per (project, locale), unique(project_id, code)
+- [x] `namespaces` (id, project_id, name, authority)  — authority in `('code','platform')` via a DB-level `CHECK`
+- [x] `keys` (id, namespace_id, name, source_text, source_hash)  — unique(namespace_id, name)
+- [x] `translations` (id, key_id, locale_id, target_text, status, updated_at, version)  — unique(key_id, locale_id)
+- [x] Kysely codegen from the schema; check into `packages/db/src/generated.ts`.
 
 Deliberately absent from M1: `register`, `assignments`, `comments`, `audit_log`, `content_links`, `snapshots`. Add when their milestone lands. Schema is easier to *extend* than to speculate.
 
-**Outcome:** `pnpm db:migrate` on an empty Postgres produces this schema.
+Also added `docker/docker-compose.yml` (Postgres 16, ahead of full step 11 — needed now so `packages/db` has something real to migrate against) and `.env.example` at repo root.
+
+**Outcome:** ✅ with one caveat. `bun test` passes (4 tests, 14 assertions) — each migration's `up()` runs for real against `pg-mem` (an in-memory Postgres-wire-compatible engine), proving the SQL is valid Postgres and that every FK/unique/CHECK constraint actually rejects bad data (orphan FK, duplicate locale code, invalid authority, duplicate key name, duplicate translation). `pnpm typecheck`/`pnpm lint` exit 0.
+
+**Not verified in this environment:** this sandbox has neither Docker nor a real Postgres, so `pnpm db:migrate` (the real `Migrator` + `kysely-postgres-js` + `postgres.js` path) has only been typechecked, not executed. Kysely's `Migrator` itself also can't run against pg-mem — its bookkeeping-table existence check issues a `!~` regex query pg-mem's catalog emulation can't execute — so the tests call each migration's `up()` directly instead. Before trusting this fully, run `docker compose -f docker/docker-compose.yml up -d` then `pnpm --filter @phrasebook/db db:migrate` against it once, and ideally regenerate `src/generated.ts` with `kysely-codegen` to confirm the hand-authored types diff clean against the real introspected schema.
 
 ### 5. `apps/server` — Store interface + Postgres driver
 
