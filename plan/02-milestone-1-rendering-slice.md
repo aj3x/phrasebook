@@ -39,13 +39,13 @@ Each numbered item is roughly one commit. If any item balloons, we split it — 
 
 **Outcome:** ✅ `@phrasebook/schemas` exports `LocaleCode`, `NamespaceName`, `TranslationBundle` (schema + inferred type) from `src/index.ts`. `bun test` passes (31 tests), `pnpm typecheck` and `pnpm lint` exit 0.
 
-### 3. `packages/icu`
+### 3. `packages/icu` ✅
 
-- [ ] Wrap `@formatjs/intl-messageformat` behind two exports: `format(source, locale, values)` and `canonicalize(source)`.
-- [ ] Pin the FormatJS version. Add a `CLDR_VERSION.md` note recording which CLDR version ships with the pinned FormatJS release.
-- [ ] Tests: format an English plural, a French plural, an Arabic plural (six plural categories — proves CLDR is real), and canonicalize two whitespace-different-but-equivalent ICU strings to the same output.
+- [x] Wrap `intl-messageformat` (the FormatJS runtime package; the plan's `@formatjs/intl-messageformat` name doesn't exist on npm) behind two exports: `format(source, locale, values)` and `canonicalize(source)`.
+- [x] Pin exact versions (`intl-messageformat@11.2.10`, `@formatjs/icu-messageformat-parser@3.5.13`). `CLDR_VERSION.md` records that plural rules actually come from Bun's bundled ICU (Bun 1.3.14 → ICU 75.1 → CLDR 45), not from these npm packages — `intl-messageformat` defers to the runtime's native `Intl.PluralRules`.
+- [x] Tests: format an English plural, a French plural, an Arabic plural (all six plural categories — proves CLDR is real), and canonicalize two whitespace-different-but-equivalent ICU strings to the same output.
 
-**Outcome:** ICU works and is tested before anyone builds on top of it. If FormatJS is going to bite us on Bun, we find out here.
+**Outcome:** ✅ ICU works and is tested. `bun test` passes (16 tests, 3 files) in `packages/icu`. `pnpm typecheck` and `pnpm lint` exit 0 from repo root.
 
 ### 4. `packages/db` — minimal schema
 
