@@ -68,13 +68,20 @@ Also added `docker/docker-compose.yml` (Postgres 16, ahead of full step 11 — n
 
 **Also verified against real Postgres** (2026-07-10): all 7 migrations ran cleanly via `pnpm --filter @phrasebook/db db:migrate` against `postgres:16-alpine` via `docker/docker-compose.yml`. Cross-checked `src/generated.ts` against a fresh `kysely-codegen` introspection — functionally clean diff. Two intentional deltas: (1) `namespaces.authority` is narrowed to `'code' | 'platform'` (authored, backed by DB CHECK; codegen sees `text`); (2) `translations.updated_at` is `Generated<Date>` vs codegen's `Generated<Timestamp>` (which additionally accepts `string` on write) — minor precision difference on inserts, easy to loosen later.
 
-### 5. `apps/server` — Store interface + Postgres driver
+### 5. `apps/server` — Store interface + Postgres driver ✅
 
-- [ ] `Store` interface in `apps/server/src/store/store.ts` — the minimal §6 subset M1 needs: `getBundle(project, locale, namespace) → { keys, version, etag }`, `putTranslation(...)` (used only by the seed for now).
-- [ ] `PostgresStore` implementation in `apps/server/src/store/postgres.ts`.
-- [ ] No git driver, no capability flags yet — but the interface is real and the file layout has room for `git.ts` alongside `postgres.ts`.
+- [x] `Store` interface in `apps/server/src/store/store.ts` — the minimal §6 subset M1 needs: `getBundle(project, locale, namespace) → { keys, version, etag }`, `putTranslation(...)` (used only by the seed for now).
+- [x] `PostgresStore` implementation in `apps/server/src/store/postgres.ts`.
+- [x] No git driver, no capability flags yet — but the interface is real and the file layout has room for `git.ts` alongside `postgres.ts`.
 
-**Outcome:** the store abstraction lives from day 1. Adding lite mode later is an implementation swap, not a refactor.
+**Design notes not in the original plan text:**
+- `project`/`namespace`/`locale` are looked up by human-readable name/code (matching the `projects`/`namespaces`/`locales` schema from step 4, which has no separate slug column) — fine for M1's single-project-per-lookup scope.
+- Bundle `version` is `MAX(translations.version)` across the matched (namespace, locale) rows, `0` if none exist yet; `etag` is that version quoted (`"3"`), ready to drop straight into an `ETag` header in step 6.
+- A key with no translation row for the requested locale is silently omitted from the bundle's `keys` — fallback resolution is `packages/core`'s job (F10), not the server's.
+- `putTranslation` upserts on the `(key_id, locale_id)` unique constraint, bumping `version` by 1 and `updated_at` to `now()` on update; throws if project/namespace/locale/key can't be resolved (acceptable since it's currently only called by the not-yet-built seed script, which always creates keys first).
+- Also extracted `packages/db`'s pg-mem test-migration helper into `packages/db/src/test-utils.ts`, exported via a `./test-utils` package.json subpath, so `apps/server`'s tests reuse it instead of re-deriving the pg-mem-vs-Migrator workaround.
+
+**Outcome:** ✅ the store abstraction lives from day 1. Adding lite mode later is an implementation swap, not a refactor. `bun test` passes (7 tests, 11 assertions) in `apps/server`, exercising `PostgresStore` against `pg-mem` the same way `packages/db`'s own tests do. `pnpm typecheck`/`pnpm lint` exit 0 from repo root. Not yet execution-verified against a real Postgres (same sandbox caveat as step 4) — should hold up unchanged given step 4's real-Postgres verification, but worth a real run once `apps/server` has a way to be invoked (step 6).
 
 ### 6. `apps/server` — Hono app + runtime endpoint
 
