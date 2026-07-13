@@ -83,16 +83,18 @@ Also added `docker/docker-compose.yml` (Postgres 16, ahead of full step 11 — n
 
 **Outcome:** ✅ the store abstraction lives from day 1. Adding lite mode later is an implementation swap, not a refactor. `bun test` passes (7 tests, 11 assertions) in `apps/server`, exercising `PostgresStore` against `pg-mem` the same way `packages/db`'s own tests do. `pnpm typecheck`/`pnpm lint` exit 0 from repo root. Not yet execution-verified against a real Postgres (same sandbox caveat as step 4) — should hold up unchanged given step 4's real-Postgres verification, but worth a real run once `apps/server` has a way to be invoked (step 6).
 
-### 6. `apps/server` — Hono app + runtime endpoint
+### 6. `apps/server` — Hono app + runtime endpoint ✅
 
-- [ ] Hono app with one route: `GET /v1/runtime/:project/:locale/:namespace` → returns the bundle JSON.
-- [ ] `ETag: "<version>"` header. Respect `If-None-Match` → `304`.
-- [ ] `Cache-Control: public, max-age=60, must-revalidate`.
-- [ ] CORS enabled for `http://localhost:5173`.
-- [ ] Bind `127.0.0.1` by default. Config via env: `DATABASE_URL`, `PORT`, `BIND_ADDR`.
-- [ ] Health endpoint: `GET /health` → `200 OK`.
+- [x] Hono app with one route: `GET /v1/runtime/:project/:locale/:namespace` → returns the bundle JSON.
+- [x] `ETag: "<version>"` header. Respect `If-None-Match` → `304`.
+- [x] `Cache-Control: public, max-age=60, must-revalidate`.
+- [x] CORS enabled for `http://localhost:5173`.
+- [x] Bind `127.0.0.1` by default. Config via env: `DATABASE_URL`, `PORT`, `BIND_ADDR`.
+- [x] Health endpoint: `GET /health` → `200 OK`.
 
-**Outcome:** `curl http://127.0.0.1:3000/v1/runtime/demo/en/common` returns real JSON.
+`src/app.ts` is a `createApp(store: Store)` factory (dependency-injected, so route tests use a `FakeStore` instead of a real DB). `src/index.ts` is the real entrypoint: reads `DATABASE_URL`/`PORT`/`BIND_ADDR`, wires `PostgresStore`, and serves via `Bun.serve`.
+
+**Outcome:** ✅, and this time verified beyond typecheck. `bun test` passes (13 tests, 21 assertions). More importantly: ran a genuine end-to-end smoke test outside the test suite — `pg-mem`'s `bindServer()` (needs its optional `pg-server` peer dep, missing in the step-4/5 attempts) opened a real TCP Postgres-wire-compatible server; ran the real migrations and seeded a `demo` project against it; started the actual `src/index.ts` entrypoint as a real `bun` subprocess with `DATABASE_URL` pointed at that server; then hit it with real HTTP requests. All of it worked end-to-end through the real `postgres.js` + `kysely-postgres-js` driver stack: `GET /health` → `200 OK`; `GET /v1/runtime/demo/en/common` → `200` with the correct JSON body, `ETag: "0"`, and the right `Cache-Control`; re-requesting with that `ETag` as `If-None-Match` → `304`; unknown project → `404`; `Origin: http://localhost:5173` → `Access-Control-Allow-Origin` echoed back. This is the strongest verification so far in this sandbox (real wire protocol, real client driver, real subprocess, real HTTP) — the one remaining gap versus literal Docker Postgres is that pg-mem's SQL engine, while very capable, isn't Postgres itself, so subtle semantic differences are still possible in principle.
 
 ### 7. Seed script
 

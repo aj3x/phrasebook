@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "dev": "bun run src/index.ts"
   },
   "dependencies": {
     "@phrasebook/db": "workspace:*",
+    "@phrasebook/schemas": "workspace:*",
+    "hono": "^4.12.30",
     "kysely": "^0.29.3"
   },
   "devDependencies": {

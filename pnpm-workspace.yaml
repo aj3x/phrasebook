@@ -3,3 +3,5 @@ packages:
   - "packages/*"
 allowBuilds:
   '@biomejs/biome': true
+minimumReleaseAgeExclude:
+  - hono@4.12.30
