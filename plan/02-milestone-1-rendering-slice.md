@@ -121,15 +121,19 @@ Also added `docker/docker-compose.yml` (Postgres 16, ahead of full step 11 — n
 
 **Outcome:** ✅ SDK works standalone. Any JS project could use it, not just React. `bun test` passes (12 tests, 27 assertions) in `packages/core`; `pnpm typecheck`/`pnpm lint` exit 0 from repo root across all 6 packages/apps now in the workspace.
 
-### 9. `packages/react` — React bindings
+### 9. `packages/react` — React bindings ✅
 
-- [ ] `<PhrasebookProvider client={} locale={} onLocaleChange={}>` — provides the core client + current locale via context.
-- [ ] `useT()` → returns the `t` function bound to the current locale.
-- [ ] `useLocale()` → `[locale, setLocale]`.
-- [ ] Suspense-friendly: initial load throws a promise; components using `useT` suspend until the first bundle is ready. (Alternatively: `isLoading` on the hook. Pick one — I lean Suspense; push back if you'd rather a hook flag.)
-- [ ] Tests: render a component, verify plural + fallback.
+- [x] `<PhrasebookProvider client={} locale={} onLocaleChange={}>` — provides the core client + current locale via context.
+- [x] `useT()` → returns the `t` function bound to the current locale.
+- [x] `useLocale()` → `[locale, setLocale]`.
+- [x] Suspense-friendly: initial load throws a promise; components using `useT` suspend until the first bundle is ready. Went with Suspense as the plan's stated lean (no pushback needed) — `PhrasebookProvider` itself throws (not `useT`), so the whole subtree suspends together rather than each `useT` call racing independently. A per-`(client, locale)` `WeakMap` cache means a locale that's already loaded is a no-op on re-render, and a genuinely new locale re-suspends.
+- [x] Tests: render a component, verify plural + fallback. Went further — one test renders the real `@phrasebook/core` `createClient` (not a fake) through the full Provider/`useT` stack against the exact `fr-CA → fr` gap `seed.ts` creates, asserting both the direct-hit key and the ICU-formatted fallback render correctly in the DOM.
 
-**Outcome:** `<h1>{t('home.hero.title')}</h1>` works.
+Per `plan/01-repo-topology.md`'s tooling decision, this package uses **Vitest + `@testing-library/react` + jsdom**, not `bun test` (the only package in the repo that doesn't use Bun's runner — React needs a DOM environment bun:test doesn't provide out of the box).
+
+**Sandbox-environment note:** this container has `NODE_ENV=production` set at the shell level. Under that, React loads its production build even inside Vitest, which strips `act` entirely — `@testing-library/react`'s `render()` failed outright until fixed. Fixed at the `package.json` script level (`"test": "NODE_ENV=test vitest run"`) rather than relying on the invoking shell, since some CI systems default to `NODE_ENV=production` too.
+
+**Outcome:** ✅ `<h1>{t('home.hero.title')}</h1>` works — verified via Testing Library rendering into real jsdom, not just calling the hook function directly. `vitest run` passes (4 test files) in `packages/react`; `pnpm typecheck`/`pnpm lint` exit 0 from repo root across all 7 packages/apps.
 
 ### 10. `apps/demo-web` — the consumer app
 
