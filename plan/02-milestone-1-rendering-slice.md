@@ -96,14 +96,18 @@ Also added `docker/docker-compose.yml` (Postgres 16, ahead of full step 11 — n
 
 **Outcome:** ✅, and this time verified beyond typecheck. `bun test` passes (13 tests, 21 assertions). More importantly: ran a genuine end-to-end smoke test outside the test suite — `pg-mem`'s `bindServer()` (needs its optional `pg-server` peer dep, missing in the step-4/5 attempts) opened a real TCP Postgres-wire-compatible server; ran the real migrations and seeded a `demo` project against it; started the actual `src/index.ts` entrypoint as a real `bun` subprocess with `DATABASE_URL` pointed at that server; then hit it with real HTTP requests. All of it worked end-to-end through the real `postgres.js` + `kysely-postgres-js` driver stack: `GET /health` → `200 OK`; `GET /v1/runtime/demo/en/common` → `200` with the correct JSON body, `ETag: "0"`, and the right `Cache-Control`; re-requesting with that `ETag` as `If-None-Match` → `304`; unknown project → `404`; `Origin: http://localhost:5173` → `Access-Control-Allow-Origin` echoed back. This is the strongest verification so far in this sandbox (real wire protocol, real client driver, real subprocess, real HTTP) — the one remaining gap versus literal Docker Postgres is that pg-mem's SQL engine, while very capable, isn't Postgres itself, so subtle semantic differences are still possible in principle.
 
-### 7. Seed script
+### 7. Seed script ✅
 
-- [ ] `apps/server/src/seed.ts`: creates a `demo` project with locales `en`, `fr`, `fr-CA`, `es`; namespace `common`; keys `home.hero.title`, `home.hero.subtitle`, `cart.items` (the ICU plural).
-- [ ] Populates translations. `fr-CA` intentionally missing the plural to prove the fallback chain.
-- [ ] Idempotent: re-run leaves the DB in the same state.
-- [ ] Bun script exposed as `bun run seed`.
+- [x] `apps/server/src/seed.ts`: creates a `demo` project with locales `en`, `fr`, `fr-CA`, `es`; namespace `common`; keys `home.hero.title`, `home.hero.subtitle`, `cart.items` (the ICU plural).
+- [x] Populates translations. `fr-CA` intentionally missing the plural to prove the fallback chain.
+- [x] Idempotent: re-run leaves the DB in the same state.
+- [x] Bun script exposed as `bun run seed`.
 
-**Outcome:** `docker compose up` + one command = testable data.
+`seed(db: Kysely<Database>)` is exported and testable on its own (dependency-injected, same pattern as `PostgresStore`); a small `import.meta.main` block at the bottom wires the real `DATABASE_URL` CLI path. All org/workspace/project/locale/namespace/key IDs are fixed UUID constants with `ON CONFLICT (id) DO NOTHING`, and translations upsert on the `(key_id, locale_id)` unique constraint without touching `version` — so re-running is a true no-op, not just "doesn't crash."
+
+**Verification note — a real bug found, but not in our code:** ran the actual `bun run seed` CLI (twice, to prove idempotency) as a subprocess against a `pg-mem`-backed real TCP Postgres-wire-compatible server, then started the real server against that seeded data and hit it over HTTP — `en`/`fr`/`es` each returned all 3 keys, `fr-CA` correctly returned only 2 (no `cart.items`), and the second seed run left `keys`/`translations` row counts unchanged (3 and 11). While doing that, French/Spanish accented text came back **truncated** over that TCP connection (e.g., "facilement" → "facilemen"). Isolated it: the same data read in-process through `pg-mem`'s Kysely adapter (no wire protocol) round-trips correctly; only the `bindServer()`/wire-protocol path truncates multi-byte UTF-8. That's a `pg-mem` bug in its Postgres wire-protocol emulation, not in `seed.ts` — confirmed separately because the `bun test` suite (which uses `pg-mem`'s in-process adapter, per `packages/db/src/test-utils.ts`) already asserts the full, untruncated French/Spanish strings with exact equality and passes. Worth knowing if a future real-Postgres smoke test ever disagrees with the pg-mem-based one on non-ASCII content — trust real Postgres.
+
+**Outcome:** ✅ `docker compose up` + `pnpm --filter @phrasebook/server seed` = testable data (not literally verified against `docker compose` in this sandbox, but verified against a real TCP-wire-protocol server running the real migrations, matching step 4/5/6's caveat).
 
 ### 8. `packages/core` — the framework-agnostic SDK
 
