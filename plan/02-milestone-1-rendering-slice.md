@@ -109,15 +109,17 @@ Also added `docker/docker-compose.yml` (Postgres 16, ahead of full step 11 — n
 
 **Outcome:** ✅ `docker compose up` + `pnpm --filter @phrasebook/server seed` = testable data (not literally verified against `docker compose` in this sandbox, but verified against a real TCP-wire-protocol server running the real migrations, matching step 4/5/6's caveat).
 
-### 8. `packages/core` — the framework-agnostic SDK
+### 8. `packages/core` — the framework-agnostic SDK ✅
 
-- [ ] `createClient({ endpoint, project, namespaces, defaultLocale, fallbackChain? })`.
-- [ ] Bundle fetching with ETag revalidation and in-memory cache keyed by `(locale, namespace, version)`.
-- [ ] Locale-fallback resolution when a key is missing in the requested locale: walk the fallback chain (F10). Default chain derived from BCP-47: `fr-CA → fr → en (source)`. Overridable.
-- [ ] `t(key, values?)` — resolves ICU via `@phrasebook/icu`. Returns the source text if no translation and no chain match (better than exploding in the UI). Logs a warning in dev mode.
-- [ ] Tests: mock the endpoint, verify fallback, verify ICU output, verify ETag revalidation caches.
+- [x] `createClient({ endpoint, project, namespaces, defaultLocale, fallbackChain? })`.
+- [x] Bundle fetching with ETag revalidation and in-memory cache keyed by `(locale, namespace)` (version lives inside the cached entry, used for the DoD's ETag comparison rather than as part of the cache lookup key — storing distinct cache slots per version wouldn't let stale entries get replaced).
+- [x] Locale-fallback resolution when a key is missing in the requested locale: walk the fallback chain (F10). Default chain derived from BCP-47: `fr-CA → fr → en (source)`. Overridable via a `fallbackChain` map (`deriveFallbackChain` in `src/fallback-chain.ts`).
+- [x] `t(key, values?)` — resolves ICU via `@phrasebook/icu`, using the CLDR rules of whichever chain locale the string actually came from (not necessarily the requested locale). Returns the raw key if no translation and no chain match — including the source/default locale, since that's genuinely nothing left to fall back to. Logs a `console.warn` in dev mode (`dev: true` option) for both that case and fetch failures.
+- [x] Tests: mock the endpoint, verify fallback (including the exact `fr-CA → fr` gap `seed.ts` creates, formatted with French plural rules), verify ICU output, verify ETag revalidation caches (asserted the actual `If-None-Match` header sent and a `304` response reusing the cached bundle).
 
-**Outcome:** SDK works standalone. Any JS project could use it, not just React.
+**Also covers M1 DoD item 6** ("killing the server and reloading uses the SDK's in-memory cache; page still renders, no error UI"), tested directly: a fetch that throws never rejects `load()`, and a previously cached bundle keeps serving `t()` correctly through a failed re-fetch.
+
+**Outcome:** ✅ SDK works standalone. Any JS project could use it, not just React. `bun test` passes (12 tests, 27 assertions) in `packages/core`; `pnpm typecheck`/`pnpm lint` exit 0 from repo root across all 6 packages/apps now in the workspace.
 
 ### 9. `packages/react` — React bindings
 
