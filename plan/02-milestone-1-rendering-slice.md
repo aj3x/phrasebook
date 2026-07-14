@@ -169,12 +169,18 @@ Needed one addition to `packages/core` not in the original plan text: `Client.re
 
 **Outcome:** the 5-minute path *should* work from a clean clone — please confirm with a real `docker compose up`.
 
-### 12. Documentation for M1
+### 12. Documentation for M1 ✅
 
-- [ ] Root `README.md` gets a "Try it" section: prerequisites, `cp .env.example .env`, `docker compose up`, `pnpm dev` in `apps/demo-web`, open `http://localhost:5173`.
-- [ ] Short section: "What's in M1 and what isn't." Links to `plan/00-overview.md`.
+- [x] Root `README.md` gets a "Try it" section: prerequisites, `cp .env.example .env`, `docker compose up`, `pnpm dev` in `apps/demo-web`, open `http://localhost:5173`.
+- [x] Short section: "What's in M1 and what isn't." Links to `plan/00-overview.md`.
 
-**Outcome:** anyone (including future-you) can run this without asking.
+Also names the `fr-CA` fallback specifically as something to try (not just "it works") since that's the one behavior in this milestone that isn't visually obvious unless you know to look for it.
+
+**Outcome:** ✅ anyone (including future-you) can run this without asking — modulo the step-11 caveat that the Docker path itself hasn't been run for real in this sandbox.
+
+## M1 status: all 12 steps complete
+
+Every checklist item above is done and committed. What's genuinely verified end-to-end in this sandbox (no Docker available here): all `bun test`/`vitest run` suites across all 8 packages/apps pass; `pnpm typecheck` and `pnpm lint` are clean from repo root; migrations, seed, and the server were proven against a real TCP Postgres-wire-compatible server (not just in-process mocks) with the actual `bun` subprocess and real HTTP requests; `apps/demo-web` was proven via real jsdom rendering through the actual `App` component and a successful `vite build`. What's *not* verified here and needs a real run on your end: `docker compose up` from a clean clone, and actually opening `http://localhost:5173` in a browser. Per the working agreement in `plan/00-overview.md` ("you run M1 when it's up; I don't guess what to build next until you've poked it") — this is the point to actually run it and report back before M2 starts.
 
 ## Explicit non-goals for M1 (repeat, for emphasis)
 
