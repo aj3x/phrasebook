@@ -1,7 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useId, useState } from 'react';
 import { KeyTable } from './KeyTable';
-import { type FetchImpl, fetchKeys, fetchProjectDetail } from './api';
+import { type FetchImpl, fetchKeys, fetchProjectDetail, saveTranslation } from './api';
 
 const STATUS_FILTER_OPTIONS = [
   'untranslated',
@@ -25,6 +25,7 @@ export function ProjectView({ endpoint, project, onBack, fetchImpl }: ProjectVie
   const namespaceId = useId();
   const localeId = useId();
   const statusId = useId();
+  const queryClient = useQueryClient();
 
   const [namespace, setNamespace] = useState<string | undefined>(undefined);
   const [locale, setLocale] = useState<string | undefined>(undefined);
@@ -39,8 +40,9 @@ export function ProjectView({ endpoint, project, onBack, fetchImpl }: ProjectVie
   const effectiveNamespace = namespace ?? detail?.namespaces[0];
   const effectiveLocale = locale ?? detail?.locales[0];
 
+  const keysQueryKey = ['keys', endpoint, project, effectiveNamespace, effectiveLocale, status];
   const keysQuery = useQuery({
-    queryKey: ['keys', endpoint, project, effectiveNamespace, effectiveLocale, status],
+    queryKey: keysQueryKey,
     queryFn: () =>
       fetchKeys(
         endpoint,
@@ -52,6 +54,26 @@ export function ProjectView({ endpoint, project, onBack, fetchImpl }: ProjectVie
       ),
     enabled: Boolean(effectiveNamespace && effectiveLocale),
   });
+
+  async function handleSave(key: string, originalText: string, targetText: string) {
+    const outcome = await saveTranslation(
+      endpoint,
+      project,
+      effectiveNamespace as string,
+      effectiveLocale as string,
+      key,
+      targetText,
+      originalText,
+      fetchImpl,
+    );
+    if (outcome.kind === 'success') {
+      // KeyTable already shows the reconciled text/status optimistically;
+      // this just brings the underlying query back in sync eventually
+      // (e.g. another user's concurrent edits on other keys).
+      queryClient.invalidateQueries({ queryKey: keysQueryKey });
+    }
+    return outcome;
+  }
 
   return (
     <main>
@@ -109,7 +131,13 @@ export function ProjectView({ endpoint, project, onBack, fetchImpl }: ProjectVie
 
           {keysQuery.isPending && <p>Loading keys…</p>}
           {keysQuery.error && <p role="alert">Failed to load keys.</p>}
-          {keysQuery.data && <KeyTable rows={keysQuery.data} />}
+          {keysQuery.data && (
+            <KeyTable
+              key={`${effectiveNamespace}-${effectiveLocale}-${status}`}
+              rows={keysQuery.data}
+              onSave={handleSave}
+            />
+          )}
         </>
       )}
     </main>

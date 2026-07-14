@@ -76,3 +76,51 @@ export async function fetchKeys(
   const body = (await res.json()) as { keys: KeyRow[] };
   return body.keys;
 }
+
+export type SaveOutcome =
+  | { kind: 'success'; status: string }
+  | { kind: 'conflict'; currentText: string }
+  | { kind: 'error'; message: string };
+
+/**
+ * Never throws -- a save-time conflict (D22, §5) is an expected, routine
+ * outcome the caller needs to react to (show the stored value next to the
+ * draft), not an exceptional one. Only truly unexpected failures collapse
+ * into the generic 'error' branch.
+ */
+export async function saveTranslation(
+  endpoint: string,
+  project: string,
+  namespace: string,
+  locale: string,
+  key: string,
+  targetText: string,
+  originalText: string,
+  fetchImpl: FetchImpl = fetch,
+): Promise<SaveOutcome> {
+  const path = [
+    'v1',
+    'projects',
+    encodeURIComponent(project),
+    'translations',
+    encodeURIComponent(namespace),
+    encodeURIComponent(locale),
+    encodeURIComponent(key),
+  ].join('/');
+
+  const res = await fetchImpl(`${endpoint}/${path}`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetText, originalText }),
+  });
+  const body = await res.json().catch(() => ({}));
+
+  if (res.ok) {
+    return { kind: 'success', status: body.status };
+  }
+  if (res.status === 409) {
+    return { kind: 'conflict', currentText: body.currentText };
+  }
+  return { kind: 'error', message: body.error ?? `Save failed (${res.status})` };
+}

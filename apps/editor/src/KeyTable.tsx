@@ -5,7 +5,14 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
-import type { KeyRow } from './api';
+import type { KeyRow, SaveOutcome } from './api';
+
+const TARGET_COLUMN_INDEX = 2;
+
+function omitKey<T>(record: Record<string, T>, key: string): Record<string, T> {
+  const { [key]: _removed, ...rest } = record;
+  return rest;
+}
 
 const STATUS_STYLES: Record<string, React.CSSProperties> = {
   // machine_translated is untouched-by-a-human MT output -- visually
@@ -18,10 +25,14 @@ const STATUS_STYLES: Record<string, React.CSSProperties> = {
   published: { color: '#0a7a2f', fontWeight: 700 },
   needs_update: { color: '#b00020' },
   deprecated: { color: '#888888', textDecoration: 'line-through' },
+  // Client-side-only transitional label, not a real §5 status -- shown
+  // optimistically between committing an edit and the save resolving.
+  saving: { fontStyle: 'italic', color: '#888888' },
 };
 
 function StatusBadge({ status }: { status: string }) {
-  return <span style={STATUS_STYLES[status] ?? {}}>{status.replace(/_/g, ' ')}</span>;
+  const label = status === 'saving' ? 'saving…' : status.replace(/_/g, ' ');
+  return <span style={STATUS_STYLES[status] ?? {}}>{label}</span>;
 }
 
 const columnHelper = createColumnHelper<KeyRow>();
@@ -36,8 +47,27 @@ const columns = [
   }),
 ];
 
+type EditingState =
+  | {
+      mode: 'editing' | 'saving';
+      rowIndex: number;
+      key: string;
+      originalText: string;
+      draft: string;
+      errorMessage?: string;
+    }
+  | {
+      mode: 'conflict';
+      rowIndex: number;
+      key: string;
+      originalText: string;
+      draft: string;
+      currentText: string;
+    };
+
 export interface KeyTableProps {
   rows: KeyRow[];
+  onSave: (key: string, originalText: string, targetText: string) => Promise<SaveOutcome>;
 }
 
 /**
@@ -45,20 +75,88 @@ export interface KeyTableProps {
  * the actual reason TanStack Table (headless) won over a grid with
  * baked-in mouse-first UX, since it leaves this entirely up to us to
  * build rather than fighting a pre-built widget's own key handling.
+ *
+ * Only the target-text column is inline-editable. A save-time conflict
+ * (D22, §5) keeps the cell in edit mode with both the draft and the
+ * currently-stored value visible, rather than a bare error dialog --
+ * "submit anyway" retries with the stored value as the new snapshot
+ * (guaranteed to succeed), "cancel" discards the draft.
  */
-export function KeyTable({ rows }: KeyTableProps) {
-  const table = useReactTable({ data: rows, columns, getCoreRowModel: getCoreRowModel() });
+export function KeyTable({ rows, onSave }: KeyTableProps) {
+  const [active, setActive] = useState({ row: 0, col: 0 });
+  const [editing, setEditing] = useState<EditingState | null>(null);
+  // Optimistic display state, keyed by key name: the parent's `rows` prop
+  // only reflects reality after its own query refetches, which lags
+  // behind a save's response -- this is what makes a just-saved cell show
+  // the new text and reconciled status immediately.
+  const [overrides, setOverrides] = useState<Record<string, Pick<KeyRow, 'targetText' | 'status'>>>(
+    {},
+  );
+  const cellRefs = useRef(new Map<string, HTMLTableCellElement>());
+
+  const displayRows = rows.map((row) =>
+    overrides[row.key] ? { ...row, ...overrides[row.key] } : row,
+  );
+  const table = useReactTable({ data: displayRows, columns, getCoreRowModel: getCoreRowModel() });
   const tableRows = table.getRowModel().rows;
   const columnCount = columns.length;
 
-  const [active, setActive] = useState({ row: 0, col: 0 });
-  const cellRefs = useRef(new Map<string, HTMLTableCellElement>());
-
   useEffect(() => {
+    if (editing) return;
     cellRefs.current.get(`${active.row}-${active.col}`)?.focus();
-  }, [active]);
+  }, [active, editing]);
 
-  function handleKeyDown(e: KeyboardEvent<HTMLTableElement>) {
+  function startEditing(rowIndex: number, row: KeyRow) {
+    setEditing({
+      mode: 'editing',
+      rowIndex,
+      key: row.key,
+      originalText: row.targetText,
+      draft: row.targetText,
+    });
+  }
+
+  async function commit(snapshotText: string, draft: string) {
+    if (!editing) return;
+    if (draft === snapshotText && editing.mode !== 'conflict') {
+      setEditing(null);
+      return;
+    }
+
+    const { rowIndex, key } = editing;
+    setEditing({ mode: 'saving', rowIndex, key, originalText: snapshotText, draft });
+    setOverrides((prev) => ({ ...prev, [key]: { targetText: draft, status: 'saving' } }));
+
+    const outcome = await onSave(key, snapshotText, draft);
+
+    if (outcome.kind === 'success') {
+      setOverrides((prev) => ({ ...prev, [key]: { targetText: draft, status: outcome.status } }));
+      setEditing(null);
+    } else if (outcome.kind === 'conflict') {
+      setOverrides((prev) => omitKey(prev, key));
+      setEditing({
+        mode: 'conflict',
+        rowIndex,
+        key,
+        originalText: snapshotText,
+        draft,
+        currentText: outcome.currentText,
+      });
+    } else {
+      setOverrides((prev) => omitKey(prev, key));
+      setEditing({
+        mode: 'editing',
+        rowIndex,
+        key,
+        originalText: snapshotText,
+        draft,
+        errorMessage: outcome.message,
+      });
+    }
+  }
+
+  function handleTableKeyDown(e: KeyboardEvent<HTMLTableElement>) {
+    if (editing) return;
     switch (e.key) {
       case 'ArrowUp':
         e.preventDefault();
@@ -76,6 +174,13 @@ export function KeyTable({ rows }: KeyTableProps) {
         e.preventDefault();
         setActive((a) => ({ ...a, col: Math.min(columnCount - 1, a.col + 1) }));
         break;
+      case 'Enter':
+        if (active.col === TARGET_COLUMN_INDEX) {
+          e.preventDefault();
+          const row = tableRows[active.row]?.original;
+          if (row) startEditing(active.row, row);
+        }
+        break;
       default:
         break;
     }
@@ -86,7 +191,7 @@ export function KeyTable({ rows }: KeyTableProps) {
   }
 
   return (
-    <table onKeyDown={handleKeyDown}>
+    <table onKeyDown={handleTableKeyDown}>
       <thead>
         {table.getHeaderGroups().map((headerGroup) => (
           <tr key={headerGroup.id}>
@@ -103,6 +208,9 @@ export function KeyTable({ rows }: KeyTableProps) {
           <tr key={row.id}>
             {row.getVisibleCells().map((cell, colIndex) => {
               const isActive = active.row === rowIndex && active.col === colIndex;
+              const isEditingThisCell =
+                colIndex === TARGET_COLUMN_INDEX && editing?.rowIndex === rowIndex;
+
               return (
                 <td
                   key={cell.id}
@@ -114,9 +222,24 @@ export function KeyTable({ rows }: KeyTableProps) {
                     }
                   }}
                   tabIndex={isActive ? 0 : -1}
-                  onFocus={() => setActive({ row: rowIndex, col: colIndex })}
+                  onFocus={() => {
+                    if (!editing) setActive({ row: rowIndex, col: colIndex });
+                  }}
+                  onDoubleClick={() => {
+                    if (colIndex === TARGET_COLUMN_INDEX && !editing) {
+                      startEditing(rowIndex, row.original);
+                    }
+                  }}
                 >
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  {isEditingThisCell && editing ? (
+                    <TargetCellEditor
+                      state={editing}
+                      onCommit={commit}
+                      onCancel={() => setEditing(null)}
+                    />
+                  ) : (
+                    flexRender(cell.column.columnDef.cell, cell.getContext())
+                  )}
                 </td>
               );
             })}
@@ -124,5 +247,63 @@ export function KeyTable({ rows }: KeyTableProps) {
         ))}
       </tbody>
     </table>
+  );
+}
+
+interface TargetCellEditorProps {
+  state: EditingState;
+  onCommit: (snapshotText: string, draft: string) => void;
+  onCancel: () => void;
+}
+
+function TargetCellEditor({ state, onCommit, onCancel }: TargetCellEditorProps) {
+  const [draft, setDraft] = useState(state.draft);
+
+  if (state.mode === 'conflict') {
+    return (
+      <div>
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          // biome-ignore lint/a11y/noAutofocus: opening the editor is itself the user's explicit intent to type immediately.
+          autoFocus
+        />
+        <p>Current value: {state.currentText}</p>
+        <button type="button" onClick={() => onCommit(state.currentText, draft)}>
+          Submit anyway
+        </button>
+        <button type="button" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
+  const saving = state.mode === 'saving';
+
+  return (
+    <div>
+      <input
+        value={draft}
+        disabled={saving}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            onCommit(state.originalText, draft);
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            onCancel();
+          }
+        }}
+        onBlur={() => {
+          if (!saving) onCommit(state.originalText, draft);
+        }}
+        // biome-ignore lint/a11y/noAutofocus: opening the editor is itself the user's explicit intent to type immediately.
+        autoFocus
+      />
+      {state.errorMessage && <p role="alert">{state.errorMessage}</p>}
+    </div>
   );
 }
