@@ -8,12 +8,13 @@ import {
   sendBack,
   statusAfterSave,
 } from '../status';
-import type {
-  BundleResult,
-  PutTranslationInput,
-  SaveTranslationInput,
-  Store,
-  TranslationRef,
+import {
+  type BundleResult,
+  type PutTranslationInput,
+  SaveConflictError,
+  type SaveTranslationInput,
+  type Store,
+  type TranslationRef,
 } from './store';
 
 export class PostgresStore implements Store {
@@ -156,6 +157,21 @@ export class PostgresStore implements Store {
 
   async saveTranslation(input: SaveTranslationInput): Promise<TranslationStatus> {
     const { autoApprove, keyId, localeId } = await this.resolveRefIds(input);
+
+    if (input.originalText !== undefined) {
+      const existing = await this.db
+        .selectFrom('translations')
+        .select('target_text')
+        .where('key_id', '=', keyId)
+        .where('locale_id', '=', localeId)
+        .executeTakeFirst();
+      const currentText = existing?.target_text ?? '';
+
+      if (currentText !== input.originalText && currentText !== input.targetText) {
+        throw new SaveConflictError(currentText);
+      }
+    }
+
     const status = statusAfterSave(autoApprove);
     await this.upsertTranslation(keyId, localeId, input.targetText, status);
     return status;

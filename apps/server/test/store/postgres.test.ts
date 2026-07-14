@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { createMigratedTestDb } from '@phrasebook/db/test-utils';
 import { PostgresStore } from '../../src/store/postgres';
+import { SaveConflictError } from '../../src/store/store';
 
 async function seedDemoProject(db: Awaited<ReturnType<typeof createMigratedTestDb>>) {
   await db
@@ -355,6 +356,102 @@ describe('PostgresStore.saveTranslation', () => {
     await expect(
       store.saveTranslation({ ...DEMO_REF, key: 'no.such.key', targetText: 'x' }),
     ).rejects.toThrow();
+
+    await db.destroy();
+  });
+});
+
+describe('PostgresStore.saveTranslation save-time conflict detection (D22)', () => {
+  test('succeeds when originalText matches the currently stored value (unchanged since load)', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+    await seedDemoTranslation(db, 'approved');
+
+    const store = new PostgresStore(db);
+    const status = await store.saveTranslation({
+      ...DEMO_REF,
+      originalText: 'Bienvenue',
+      targetText: 'Bienvenue !',
+    });
+
+    expect(status).toBe('approved');
+    const row = await db
+      .selectFrom('translations')
+      .select('target_text')
+      .where('key_id', '=', KEY_ID)
+      .executeTakeFirstOrThrow();
+    expect(row.target_text).toBe('Bienvenue !');
+
+    await db.destroy();
+  });
+
+  test('succeeds when the stored value already matches the new text, even with a stale snapshot (no-op merge)', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+    await seedDemoTranslation(db, 'approved');
+
+    const store = new PostgresStore(db);
+    const status = await store.saveTranslation({
+      ...DEMO_REF,
+      originalText: 'some stale snapshot the translator started from',
+      targetText: 'Bienvenue',
+    });
+
+    expect(status).toBe('approved');
+
+    await db.destroy();
+  });
+
+  test('rejects a save whose snapshot is stale and whose new text differs from what is stored, carrying the current stored value', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+    await seedDemoTranslation(db, 'approved');
+
+    const store = new PostgresStore(db);
+
+    await expect(
+      store.saveTranslation({
+        ...DEMO_REF,
+        originalText: 'some stale snapshot the translator started from',
+        targetText: 'Bienvenue (my conflicting edit)',
+      }),
+    ).rejects.toThrow(SaveConflictError);
+
+    try {
+      await store.saveTranslation({
+        ...DEMO_REF,
+        originalText: 'some stale snapshot the translator started from',
+        targetText: 'Bienvenue (my conflicting edit)',
+      });
+      throw new Error('expected saveTranslation to reject');
+    } catch (err) {
+      expect(err).toBeInstanceOf(SaveConflictError);
+      expect((err as SaveConflictError).currentText).toBe('Bienvenue');
+    }
+
+    const row = await db
+      .selectFrom('translations')
+      .select('target_text')
+      .where('key_id', '=', KEY_ID)
+      .executeTakeFirstOrThrow();
+    expect(row.target_text).toBe('Bienvenue');
+
+    await db.destroy();
+  });
+
+  test('skips the conflict check entirely when originalText is omitted', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+    await seedDemoTranslation(db, 'approved');
+
+    const store = new PostgresStore(db);
+    const status = await store.saveTranslation({ ...DEMO_REF, targetText: 'Overwrite anyway' });
+
+    expect(status).toBe('approved');
 
     await db.destroy();
   });

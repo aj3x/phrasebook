@@ -24,6 +24,29 @@ export interface TranslationRef {
 
 export interface SaveTranslationInput extends TranslationRef {
   targetText: string;
+  /**
+   * The translator's snapshot of `target_text` when they started editing
+   * (D22) -- omit it to skip the conflict check entirely (e.g. seed/demo
+   * writes that don't come from a live editing session). When provided
+   * and it no longer matches the currently stored value, and the new
+   * text doesn't already match what's stored, the save is rejected with
+   * a SaveConflictError rather than silently overwriting a concurrent
+   * edit.
+   */
+  originalText?: string;
+}
+
+/**
+ * A save-time conflict per D22: not a hard lock (§F6 -- "rely on the DB
+ * status for now, not a hard lock"), just a check at the moment of save.
+ * Carries the currently stored text so a client can show a diff and let
+ * the user submit-over or cancel, rather than a bare rejection.
+ */
+export class SaveConflictError extends Error {
+  constructor(public readonly currentText: string) {
+    super('The translation has changed since you started editing');
+    this.name = 'SaveConflictError';
+  }
 }
 
 /**
