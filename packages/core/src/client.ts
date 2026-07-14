@@ -21,6 +21,7 @@ export interface CreateClientOptions {
 export interface Client {
   load(locale: string): Promise<void>;
   t(key: string, values?: FormatValues): string;
+  resolvedLocale(key: string): string | undefined;
 }
 
 interface CacheEntry {
@@ -73,6 +74,22 @@ export function createClient(options: CreateClientOptions): Client {
     }
   }
 
+  function resolve(key: string): { locale: string; source: string } | undefined {
+    const chain = deriveFallbackChain(currentLocale, options.defaultLocale, options.fallbackChain);
+
+    for (const chainLocale of chain) {
+      for (const namespace of options.namespaces) {
+        const entry = cache.get(cacheKey(chainLocale, namespace));
+        const source = entry?.keys[key];
+        if (source !== undefined) {
+          return { locale: chainLocale, source };
+        }
+      }
+    }
+
+    return undefined;
+  }
+
   return {
     async load(locale: string): Promise<void> {
       currentLocale = locale;
@@ -86,29 +103,27 @@ export function createClient(options: CreateClientOptions): Client {
     },
 
     t(key: string, values?: FormatValues): string {
-      const chain = deriveFallbackChain(
-        currentLocale,
-        options.defaultLocale,
-        options.fallbackChain,
-      );
-
-      for (const chainLocale of chain) {
-        for (const namespace of options.namespaces) {
-          const entry = cache.get(cacheKey(chainLocale, namespace));
-          const source = entry?.keys[key];
-          if (source !== undefined) {
-            return format(source, chainLocale, values);
-          }
-        }
+      const match = resolve(key);
+      if (match) {
+        return format(match.source, match.locale, values);
       }
 
       if (options.dev) {
+        const chain = deriveFallbackChain(
+          currentLocale,
+          options.defaultLocale,
+          options.fallbackChain,
+        );
         console.warn(
           `[phrasebook] no translation for "${key}" in any locale of the fallback chain [${chain.join(', ')}], falling back to the key itself`,
         );
       }
 
       return key;
+    },
+
+    resolvedLocale(key: string): string | undefined {
+      return resolve(key)?.locale;
     },
   };
 }

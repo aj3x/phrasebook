@@ -63,4 +63,49 @@ describe('createClient fallback chain', () => {
     expect(client.t('cart.items', { count: 1 })).toBe('1 article');
     expect(client.t('cart.items', { count: 2 })).toBe('2 articles');
   });
+
+  test('resolvedLocale reports which chain locale actually satisfied a key', async () => {
+    const bundles: Record<string, unknown> = {
+      'fr-CA': {
+        locale: 'fr-CA',
+        namespace: 'common',
+        version: 1,
+        keys: { 'home.hero.title': 'Bienvenue (CA)' },
+      },
+      fr: {
+        locale: 'fr',
+        namespace: 'common',
+        version: 1,
+        keys: {
+          'home.hero.title': 'Bienvenue',
+          'cart.items': '{count, plural, one {# article} other {# articles}}',
+        },
+      },
+      en: {
+        locale: 'en',
+        namespace: 'common',
+        version: 1,
+        keys: { 'home.hero.title': 'Welcome', 'cart.items': '{count, plural, other {# items}}' },
+      },
+    };
+
+    const fetchImpl = async (url: string) => {
+      const locale = url.split('/').at(-2);
+      return jsonResponse(bundles[locale ?? '']);
+    };
+
+    const client = createClient({
+      endpoint: 'https://api.example.com',
+      project: 'demo',
+      namespaces: ['common'],
+      defaultLocale: 'en',
+      fetchImpl,
+    });
+
+    await client.load('fr-CA');
+
+    expect(client.resolvedLocale('home.hero.title')).toBe('fr-CA');
+    expect(client.resolvedLocale('cart.items')).toBe('fr');
+    expect(client.resolvedLocale('no.such.key')).toBeUndefined();
+  });
 });

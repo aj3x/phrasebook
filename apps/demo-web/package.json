@@ -1,0 +1,27 @@
+{
+  "name": "@phrasebook/demo-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "NODE_ENV=test vitest run",
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@phrasebook/core": "workspace:*",
+    "@phrasebook/react": "workspace:*",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^6.0.3",
+    "jsdom": "^29.1.1",
+    "vite": "^8.1.4",
+    "vitest": "^4.1.10"
+  }
+}

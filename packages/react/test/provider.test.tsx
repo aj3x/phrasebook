@@ -19,6 +19,7 @@ describe('PhrasebookProvider + useT', () => {
     const client: Client = {
       load: () => loadPromise,
       t: (key) => (key === 'home.hero.title' ? 'Welcome' : key),
+      resolvedLocale: () => 'en',
     };
 
     render(

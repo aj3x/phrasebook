@@ -28,6 +28,7 @@ describe('locale changes', () => {
         void values;
         return key;
       },
+      resolvedLocale: () => undefined,
     };
     // Override t() per-locale after the fact isn't possible via closures
     // above cleanly, so resolve it with a tiny lookup keyed by whichever

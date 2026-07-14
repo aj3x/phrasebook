@@ -21,6 +21,7 @@ describe('useLocale', () => {
     const client: Client = {
       load: async () => {},
       t: (key) => key,
+      resolvedLocale: () => undefined,
     };
     const onLocaleChange = vi.fn();
 

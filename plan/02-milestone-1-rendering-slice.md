@@ -135,16 +135,22 @@ Per `plan/01-repo-topology.md`'s tooling decision, this package uses **Vitest + 
 
 **Outcome:** ✅ `<h1>{t('home.hero.title')}</h1>` works — verified via Testing Library rendering into real jsdom, not just calling the hook function directly. `vitest run` passes (4 test files) in `packages/react`; `pnpm typecheck`/`pnpm lint` exit 0 from repo root across all 7 packages/apps.
 
-### 10. `apps/demo-web` — the consumer app
+### 10. `apps/demo-web` — the consumer app ✅
 
-- [ ] Vite + React app.
-- [ ] `<PhrasebookProvider>` wired to `http://localhost:3000`.
-- [ ] Page renders the three keys.
-- [ ] Locale switcher (`select` element) — `en / fr / fr-CA / es`.
-- [ ] Item count input (`number` input) — feeds the plural `count`.
-- [ ] Visible in the UI: current locale, resolved locale (after fallback), request URL. Helps debugging without needing devtools.
+- [x] Vite + React app.
+- [x] `<PhrasebookProvider>` wired to `http://localhost:3000` (overridable via `VITE_API_ENDPOINT`, defaults to that).
+- [x] Page renders the three keys.
+- [x] Locale switcher (`select` element) — `en / fr / fr-CA / es`.
+- [x] Item count input (`number` input) — feeds the plural `count`.
+- [x] Visible in the UI: current (requested) locale, resolved locale per key (after fallback), request URL. Helps debugging without needing devtools.
 
-**Outcome:** the M1 experience. You open the app and see it working.
+**Design notes:** `App` takes `client`/`endpoint`/`project`/`namespace` as props rather than importing a module-level singleton, so it's dependency-injectable in tests the same way `packages/react`'s own components are (`src/client.ts` builds the real client; `src/main.tsx` is the only file that imports it and wires it into `<App>`). The locale `<select>` and count `<input>` live *outside* the `Suspense`/`PhrasebookProvider` boundary — only the translated content and debug panel are inside it — so switching locale never unmounts the controls themselves, just re-suspends the content below them.
+
+Needed one addition to `packages/core` not in the original plan text: `Client.resolvedLocale(key)`, returning which chain locale actually satisfied a key (or `undefined`). `t()` and `resolvedLocale()` now share one internal chain-walking `resolve()` helper instead of duplicating the walk. Required updating every place across the workspace that implements the `Client` interface directly (three test mocks in `packages/react`) to add the new method.
+
+**Sandbox-environment note:** found and fixed a real latent bug in both this package's and `packages/react`'s Vitest setup — no `afterEach(cleanup())`, so multiple `render()` calls in the same test file accumulate DOM instead of getting a fresh tree each time. Silent in `packages/react` (every test file there happened to have only one test), but broke `apps/demo-web`'s multi-test file outright (`getByLabelText` matched duplicate elements). Fixed with a shared `test/setup.ts` + `setupFiles` in both packages.
+
+**Outcome:** ✅ the M1 experience. No browser is available in this sandbox to literally open the page, so verification leaned on the strongest available substitutes: (1) an `App.test.tsx` suite driving the real `App` component through real jsdom rendering with `@testing-library/react` — not a shallow render, actual DOM assertions — covering the default-locale render, the exact `fr-CA → fr` fallback `seed.ts` creates (verified through the debug panel *and* the rendered plural text), and the count input updating the rendered plural live; (2) `vite build` succeeding (real bundling, 46 modules, no import/type errors); (3) the real `vite` dev server started as a subprocess and hit with actual HTTP requests, confirming it boots and serves/transforms `main.tsx` correctly. What's *not* verified: actually opening this in a browser against the real `apps/server` + Postgres — that's the one remaining step for you to confirm visually.
 
 ### 11. Docker compose
 
