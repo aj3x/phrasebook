@@ -1,14 +1,12 @@
 # Multi-stage build for @phrasebook/server. Bun runs TypeScript directly --
 # no bundling/transpilation step -- so "build" here means "install deps and
 # run the workspace typecheck as a build-time gate," not produce build
-# artifacts. The runtime stage still gets its own layer so the pnpm global
-# install (base) and the source+typecheck (build) don't pollute its history.
-FROM oven/bun:1-alpine AS base
-# No Node/corepack in this image -- install pnpm via Bun itself. The base
-# image sets BUN_INSTALL_BIN=/usr/local/bin (already on PATH) specifically
-# so `bun install -g` works; the version check below fails the build fast
-# if that ever stops being true instead of failing obscurely later.
-RUN bun install -g pnpm@11 && pnpm --version
+# artifacts. Node.js is used for the install/build stages because pnpm v11
+# requires node:sqlite, which Bun does not support on all platforms. The
+# runtime stage uses Bun (lean image, no Node) since Bun executes TypeScript
+# directly without a transpilation step.
+FROM node:22-alpine AS base
+RUN corepack enable && corepack prepare pnpm@11 --activate && pnpm --version
 WORKDIR /app
 
 FROM base AS build
