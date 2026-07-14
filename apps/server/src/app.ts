@@ -43,6 +43,25 @@ export function createApp(store: Store, auth: Auth, db: Kysely<Database>) {
 
   app.get('/health', (c) => c.text('OK'));
 
+  app.get('/v1/projects', async (c) => {
+    const authContext = c.get('authContext');
+    if (!authContext) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const allProjects = authContext.roles.some((grant) => grant.projectId === null);
+    const projectIds = [
+      ...new Set(
+        authContext.roles
+          .map((grant) => grant.projectId)
+          .filter((projectId): projectId is string => projectId !== null),
+      ),
+    ];
+
+    const projects = await store.listAccessibleProjects({ allProjects, projectIds });
+    return c.json({ projects });
+  });
+
   app.get('/v1/runtime/:project/:locale/:namespace', async (c) => {
     const { project, locale, namespace } = c.req.param();
     const bundle = await store.getBundle(project, locale, namespace);

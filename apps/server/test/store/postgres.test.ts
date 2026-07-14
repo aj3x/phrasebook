@@ -543,3 +543,67 @@ describe('PostgresStore.sendTranslationBack', () => {
     await db.destroy();
   });
 });
+
+const OTHER_PROJECT_ID = '99999999-9999-9999-9999-999999999999';
+
+async function seedSecondProject(db: Awaited<ReturnType<typeof createMigratedTestDb>>) {
+  await db
+    .insertInto('projects')
+    .values({
+      id: OTHER_PROJECT_ID,
+      workspace_id: '22222222-2222-2222-2222-222222222222',
+      name: 'other',
+      source_locale: 'en',
+    })
+    .execute();
+}
+
+describe('PostgresStore.listAccessibleProjects', () => {
+  test('returns every project when the scope grants instance-wide access', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedSecondProject(db);
+
+    const store = new PostgresStore(db);
+    const projects = await store.listAccessibleProjects({ allProjects: true, projectIds: [] });
+
+    expect(projects).toEqual(
+      expect.arrayContaining([
+        { name: 'demo', sourceLocale: 'en' },
+        { name: 'other', sourceLocale: 'en' },
+      ]),
+    );
+    expect(projects).toHaveLength(2);
+
+    await db.destroy();
+  });
+
+  test('returns only the projects matching the given ids when scope is not instance-wide', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedSecondProject(db);
+
+    const store = new PostgresStore(db);
+    const projects = await store.listAccessibleProjects({
+      allProjects: false,
+      projectIds: ['33333333-3333-3333-3333-333333333333'],
+    });
+
+    expect(projects).toEqual([{ name: 'demo', sourceLocale: 'en' }]);
+
+    await db.destroy();
+  });
+
+  test('returns an empty list when scope is not instance-wide and no project ids are given', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedSecondProject(db);
+
+    const store = new PostgresStore(db);
+    const projects = await store.listAccessibleProjects({ allProjects: false, projectIds: [] });
+
+    expect(projects).toEqual([]);
+
+    await db.destroy();
+  });
+});

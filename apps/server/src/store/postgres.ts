@@ -9,7 +9,9 @@ import {
   statusAfterSave,
 } from '../status';
 import {
+  type AccessibleProject,
   type BundleResult,
+  type ProjectAccessScope,
   type PutTranslationInput,
   SaveConflictError,
   type SaveTranslationInput,
@@ -199,5 +201,19 @@ export class PostgresStore implements Store {
     const status = sendBack(translation.status as TranslationStatus, comment);
     await this.setStatus(translation.id, status);
     return status;
+  }
+
+  async listAccessibleProjects(scope: ProjectAccessScope): Promise<AccessibleProject[]> {
+    if (!scope.allProjects && scope.projectIds.length === 0) {
+      return [];
+    }
+
+    let query = this.db.selectFrom('projects').select(['name', 'source_locale']);
+    if (!scope.allProjects) {
+      query = query.where('id', 'in', scope.projectIds);
+    }
+
+    const rows = await query.execute();
+    return rows.map((row) => ({ name: row.name, sourceLocale: row.source_locale }));
   }
 }

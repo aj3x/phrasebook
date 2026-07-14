@@ -4,7 +4,9 @@ import { createApp } from '../src/app';
 import { createAuth } from '../src/auth';
 import type { TranslationStatus } from '../src/status';
 import type {
+  AccessibleProject,
   BundleResult,
+  ProjectAccessScope,
   PutTranslationInput,
   SaveTranslationInput,
   Store,
@@ -39,6 +41,10 @@ class FakeStore implements Store {
   }
 
   async sendTranslationBack(_ref: TranslationRef, _comment: string): Promise<TranslationStatus> {
+    throw new Error('not used in these tests');
+  }
+
+  async listAccessibleProjects(_scope: ProjectAccessScope): Promise<AccessibleProject[]> {
     throw new Error('not used in these tests');
   }
 }

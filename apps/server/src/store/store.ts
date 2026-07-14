@@ -36,6 +36,25 @@ export interface SaveTranslationInput extends TranslationRef {
   originalText?: string;
 }
 
+export interface AccessibleProject {
+  name: string;
+  sourceLocale: string;
+}
+
+/**
+ * What projects a caller can see: `allProjects` is true when at least one
+ * of the user's role assignments is instance-wide (§F3 -- a NULL
+ * project_id grant), in which case `projectIds` is ignored; otherwise
+ * only the projects in `projectIds` (the union of the user's
+ * project-scoped grants) are returned. Computed by the caller from
+ * AuthContext.roles -- kept out of this file so Store doesn't depend on
+ * the session middleware's types.
+ */
+export interface ProjectAccessScope {
+  allProjects: boolean;
+  projectIds: string[];
+}
+
 /**
  * A save-time conflict per D22: not a hard lock (§F6 -- "rely on the DB
  * status for now, not a hard lock"), just a check at the moment of save.
@@ -71,4 +90,5 @@ export interface Store {
   claimTranslationForReview(ref: TranslationRef): Promise<TranslationStatus>;
   approveTranslation(ref: TranslationRef): Promise<TranslationStatus>;
   sendTranslationBack(ref: TranslationRef, comment: string): Promise<TranslationStatus>;
+  listAccessibleProjects(scope: ProjectAccessScope): Promise<AccessibleProject[]>;
 }
