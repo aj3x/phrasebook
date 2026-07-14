@@ -4,24 +4,7 @@ These are sketches, not commitments. Each expands into its own detailed file whe
 
 ## M2 — Editor + Auth
 
-**Outcome:** log in, create a project + locales, add keys, edit translations in a keyboard-first workspace. Status transitions visible.
-
-Rough shape:
-
-- `apps/editor` (React + Vite + TanStack Query + a keyboard-first table lib).
-- Auth: local username/password + session cookie. API tokens for CI (F3). OIDC deferred to M2.5 or later.
-- Full status machine (§5) implemented server-side; UI shows status transitions.
-- ICU editor: per-branch slot editing (§5 plural/ICU representation, D17). CLDR drives target plural forms.
-- Assignment + workload view (uses `needs_review` queued vs `in_review` claimed).
-- Comments/threads on keys and translations (also serves as the "TMS notes" per §4).
-- Save-time original-vs-current comparison for the string-lock semantics (D22).
-- Per-project auto-approve toggle; editing an approved translation resets status (D21).
-
-Not in M2: MT, CLI, git driver, plugins, webhooks, notifications beyond in-app.
-
-Open questions that block M2 kickoff:
-- Which keyboard-first table lib? (TanStack Table + custom keybindings vs. AG Grid Community vs. Handsontable license-check.)
-- Local auth: Lucia, better-auth, or hand-roll on `oslo`?
+Expanded into its own detailed file: [`03-milestone-2-editor.md`](03-milestone-2-editor.md). Table lib (TanStack Table), auth library (better-auth), and session model (cookie sessions) are resolved — see that file's header and `04-open-questions.md`.
 
 ## M3 — CLI + JSON Adapter + Extraction
 
@@ -103,7 +86,7 @@ Ordered by likely business value, not spec order:
 
 ## What each later milestone still needs
 
-Each of M2–M7 gets a detailed file (`plan/03-milestone-2-editor.md` etc.) *after* M1 lands and you've told me:
+Each of M3–M7 gets a detailed file (M2's landed: [`03-milestone-2-editor.md`](03-milestone-2-editor.md)) once its turn comes and you've told me:
 
 1. Whether M1's shape (SDK, endpoint, DB schema, monorepo layout) needs to change before we build on it.
 2. Which of the M2–M6 outlines to attack first (they don't have to be in numeric order).

@@ -8,8 +8,9 @@ Feedback-driven build plan. **Milestone 1 is deliberately small and end-to-end**
 |---|---|
 | [`00-overview.md`](00-overview.md) | Principles, milestone map at a glance, working-agreement. |
 | [`01-repo-topology.md`](01-repo-topology.md) | Monorepo layout, package boundaries, tooling picks (Bun, Hono, Kysely, etc.). |
-| [`02-milestone-1-rendering-slice.md`](02-milestone-1-rendering-slice.md) | The first thing you'll run. Step-by-step. Definition of done. |
-| [`03-later-milestones.md`](03-later-milestones.md) | M2 (editor) → M3 (CLI/adapters) → M4 (workflow/MT) → beyond. Outlines only. |
+| [`02-milestone-1-rendering-slice.md`](02-milestone-1-rendering-slice.md) | The first thing you'll run. Step-by-step. Definition of done. **Done.** |
+| [`03-milestone-2-editor.md`](03-milestone-2-editor.md) | Editor + auth. Step-by-step, expanded from the outline below now that M1's shape is confirmed. |
+| [`03-later-milestones.md`](03-later-milestones.md) | M3 (CLI/adapters) → M4 (workflow/MT) → beyond. Outlines only. |
 | [`04-open-questions.md`](04-open-questions.md) | Running list of things I want your input on as we go. |
 
 ## How to use these
@@ -27,7 +28,7 @@ Feedback-driven build plan. **Milestone 1 is deliberately small and end-to-end**
 - **Runtime:** Bun (server + CLI). Node compat where needed.
 - **Server framework:** Hono (Bun-native, Web Fetch–shaped).
 - **DB access:** Kysely + `postgres.js` (Postgres), `bun:sqlite` (later, lite mode).
-- **Editor:** React + Vite + TanStack Query (later milestone).
+- **Editor:** React + Vite + TanStack Query + TanStack Table (M2). Local auth via better-auth, cookie sessions.
 - **Validation:** Zod for API DTOs + shared schemas.
 - **ICU/CLDR:** `@formatjs/intl-messageformat` + `@formatjs/intl` (pinned CLDR version).
 - **Monorepo:** pnpm workspaces (Bun install compatibility flag on).

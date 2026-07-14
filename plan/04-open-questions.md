@@ -13,11 +13,11 @@ None right now. Everything I need is decided (stack, mode, first slice).
 - **Missing-key SDK behavior.** Options: (a) return source text (my current pick — most permissive), (b) return the key name, (c) return a visible marker like `[home.hero.title]` in dev, (d) throw. Or a combination gated by env.
 - **License headers in source files.** D15 is Apache-2.0 SDKs + AGPL server. Do you want a header in every file from day 1 (annoying but tidy), or a `LICENSE` per package (my default)?
 
-## To decide by M2
+## Resolved for M2 (2026-07-14)
 
-- **Auth strategy for local users.** Lucia is fine but the maintainer stopped it — no new features. Alternatives: better-auth (active, more batteries), or a small hand-roll on `oslo` primitives. I lean better-auth.
-- **Editor table library.** TanStack Table + custom keybindings (most flexible, most work) vs AG Grid Community (free tier is generous, keyboard nav good) vs Handsontable (best keyboard UX, license is complicated for AGPL host). My lean: TanStack Table.
-- **Sessions vs JWT.** Cookie-session is simpler and safer for a first-party editor + API tokens for CI. That's my default. Push back if you want stateless JWT.
+- **Auth strategy for local users: better-auth.** Confirmed over Lucia (maintenance-mode) and a hand-roll on `oslo`.
+- **Editor table library: TanStack Table.** Confirmed over AG Grid Community and Handsontable (AGPL-host licensing complexity).
+- **Sessions vs JWT: cookie sessions.** Confirmed over stateless JWT. API tokens (separate mechanism, F3) cover CI/programmatic access.
 
 ## To decide by M3
 
