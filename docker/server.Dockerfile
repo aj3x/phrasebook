@@ -14,7 +14,8 @@ COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm typecheck
 
-FROM base AS runtime
+FROM oven/bun:1-alpine AS runtime
+WORKDIR /app
 COPY --from=build /app /app
 RUN chmod +x /app/docker/server-entrypoint.sh
 
