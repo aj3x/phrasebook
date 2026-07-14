@@ -70,6 +70,7 @@ describe('migrations', () => {
       .executeTakeFirstOrThrow();
 
     expect(project.source_locale).toBe('en');
+    expect(project.auto_approve).toBe(true);
 
     const locale = await db
       .insertInto('locales')

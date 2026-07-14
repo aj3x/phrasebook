@@ -25,6 +25,8 @@ export interface ProjectsTable {
   workspace_id: string;
   name: string;
   source_locale: string;
+  /** Added by migrations/0011_project_auto_approve.ts. */
+  auto_approve: Generated<boolean>;
 }
 
 export interface LocalesTable {
