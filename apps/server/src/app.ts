@@ -4,6 +4,7 @@ import { cors } from 'hono/cors';
 import type { Kysely } from 'kysely';
 import type { Auth } from './auth';
 import { requireRole } from './middleware/require-role';
+import { hasScopedRole } from './middleware/scope';
 import type { AuthContext } from './middleware/session';
 import { createSessionMiddleware } from './middleware/session';
 import { InvalidTransitionError } from './status';
@@ -12,6 +13,7 @@ import type { Store } from './store/store';
 
 const CAN_SAVE_TRANSLATIONS = ['Admin', 'Developer', 'Translator', 'Reviewer'];
 const CAN_REVIEW_TRANSLATIONS = ['Admin', 'Developer', 'Reviewer'];
+const ANY_ROLE = ['Admin', 'Developer', 'Translator', 'Reviewer', 'Viewer'];
 
 // apps/editor's Vite dev server (vite.config.ts pins this explicitly so it
 // doesn't drift if some other app on 5173 changes which port Vite falls
@@ -60,6 +62,58 @@ export function createApp(store: Store, auth: Auth, db: Kysely<Database>) {
 
     const projects = await store.listAccessibleProjects({ allProjects, projectIds });
     return c.json({ projects });
+  });
+
+  app.get('/v1/projects/:project', async (c) => {
+    const authContext = c.get('authContext');
+    if (!authContext) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const { project } = c.req.param();
+    const projectId = await store.findProjectId(project);
+    if (!projectId) {
+      return c.json({ error: 'Not found' }, 404);
+    }
+    if (!hasScopedRole(authContext, ANY_ROLE, { projectId })) {
+      return c.json({ error: 'Forbidden' }, 403);
+    }
+
+    const detail = await store.getProjectDetail(project);
+    return c.json(detail);
+  });
+
+  app.get('/v1/projects/:project/keys', async (c) => {
+    const authContext = c.get('authContext');
+    if (!authContext) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const { project } = c.req.param();
+    const projectId = await store.findProjectId(project);
+    if (!projectId) {
+      return c.json({ error: 'Not found' }, 404);
+    }
+    if (!hasScopedRole(authContext, ANY_ROLE, { projectId })) {
+      return c.json({ error: 'Forbidden' }, 403);
+    }
+
+    const namespace = c.req.query('namespace');
+    const locale = c.req.query('locale');
+    if (!namespace || !locale) {
+      return c.json({ error: 'namespace and locale query params are required' }, 400);
+    }
+    const status = c.req.query('status');
+
+    try {
+      const keys = await store.listKeys(
+        { project, namespace, locale },
+        status ? { status } : undefined,
+      );
+      return c.json({ keys });
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 404);
+    }
   });
 
   app.get('/v1/runtime/:project/:locale/:namespace', async (c) => {
