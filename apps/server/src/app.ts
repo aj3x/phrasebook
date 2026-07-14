@@ -1,11 +1,28 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import type { Auth } from './auth';
 import type { Store } from './store/store';
 
-export function createApp(store: Store) {
+// apps/editor doesn't exist yet (M2 step 6) -- this is a placeholder dev
+// port, the next one Vite picks when 5173 (demo-web) is taken. Update once
+// the editor is actually scaffolded and its real dev port is known.
+const EDITOR_DEV_ORIGIN = 'http://localhost:5174';
+
+export function createApp(store: Store, auth: Auth) {
   const app = new Hono();
 
   app.use('/v1/*', cors({ origin: 'http://localhost:5173' }));
+
+  app.use(
+    '/api/auth/*',
+    cors({
+      origin: EDITOR_DEV_ORIGIN,
+      allowHeaders: ['Content-Type', 'Authorization'],
+      allowMethods: ['POST', 'GET', 'OPTIONS'],
+      credentials: true,
+    }),
+  );
+  app.on(['POST', 'GET'], '/api/auth/*', (c) => auth.handler(c.req.raw));
 
   app.get('/health', (c) => c.text('OK'));
 

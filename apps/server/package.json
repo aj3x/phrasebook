@@ -5,13 +5,15 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
+    "test": "NODE_ENV=test bun test",
     "dev": "bun run src/index.ts",
     "seed": "bun run src/seed.ts"
   },
   "dependencies": {
+    "@better-auth/kysely-adapter": "^1.6.23",
     "@phrasebook/db": "workspace:*",
     "@phrasebook/schemas": "workspace:*",
+    "better-auth": "^1.6.23",
     "hono": "^4.12.30",
     "kysely": "^0.29.3"
   },

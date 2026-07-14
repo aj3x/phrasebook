@@ -35,6 +35,10 @@ services:
       PORT: "3000"
       BIND_ADDR: "0.0.0.0"
       NODE_ENV: production
+      # Dev-only secret, fine to hardcode here -- same posture as the
+      # Postgres password above. Generate a real one for any real deploy.
+      BETTER_AUTH_SECRET: "dev-only-secret-change-me-32-chars-min"
+      BETTER_AUTH_URL: "http://localhost:3000"
     ports:
       - "127.0.0.1:3000:3000"
 

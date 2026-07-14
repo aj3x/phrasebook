@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
-import { createDb } from '@phrasebook/db';
+import { BUILT_IN_ROLE_IDS, createDb } from '@phrasebook/db';
 import type { Database } from '@phrasebook/db';
 import type { Kysely } from 'kysely';
+import type { Auth } from './auth';
+import { createAuth } from './auth';
 
 const ORG_ID = '00000000-0000-0000-0000-000000000001';
 const WORKSPACE_ID = '00000000-0000-0000-0000-000000000002';
@@ -136,15 +138,72 @@ export async function seed(db: Kysely<Database>): Promise<void> {
   }
 }
 
+/**
+ * Dev-only credentials, intentionally committed -- this is a local/demo
+ * seed, not a real deployment's admin account. Documented in
+ * CONTRIBUTING.md so nobody has to go hunting for it.
+ */
+export const DEV_ADMIN_EMAIL = 'admin@phrasebook.local';
+export const DEV_ADMIN_PASSWORD = 'phrasebook-dev-admin';
+
+/**
+ * Goes through better-auth's real sign-up API (not a raw insert into
+ * user/account) so password hashing takes the real code path -- hand-
+ * rolling that hash here would be both wrong and a second implementation
+ * to keep in sync with whatever better-auth does internally.
+ */
+export async function seedAdminUser(auth: Auth, db: Kysely<Database>): Promise<void> {
+  const existingUser = await db
+    .selectFrom('user')
+    .select('id')
+    .where('email', '=', DEV_ADMIN_EMAIL)
+    .executeTakeFirst();
+
+  let userId: string;
+  if (existingUser) {
+    userId = existingUser.id;
+  } else {
+    const result = await auth.api.signUpEmail({
+      body: { name: 'Admin', email: DEV_ADMIN_EMAIL, password: DEV_ADMIN_PASSWORD },
+    });
+    userId = result.user.id;
+  }
+
+  const existingAssignment = await db
+    .selectFrom('role_assignments')
+    .select('id')
+    .where('user_id', '=', userId)
+    .where('role_id', '=', BUILT_IN_ROLE_IDS.admin)
+    .executeTakeFirst();
+
+  if (!existingAssignment) {
+    await db
+      .insertInto('role_assignments')
+      .values({ id: crypto.randomUUID(), user_id: userId, role_id: BUILT_IN_ROLE_IDS.admin })
+      .execute();
+  }
+}
+
 if (import.meta.main) {
   const connectionString = process.env.DATABASE_URL;
+  const authSecret = process.env.BETTER_AUTH_SECRET;
   if (!connectionString) {
     console.error('DATABASE_URL is not set.');
     process.exit(1);
   }
+  if (!authSecret) {
+    console.error('BETTER_AUTH_SECRET is not set.');
+    process.exit(1);
+  }
 
   const db = createDb(connectionString);
+  const auth = createAuth({
+    db,
+    secret: authSecret,
+    baseURL: process.env.BETTER_AUTH_URL ?? `http://localhost:${process.env.PORT ?? 3000}`,
+  });
   await seed(db);
+  await seedAdminUser(auth, db);
   await db.destroy();
   console.log('Seed complete.');
 }
