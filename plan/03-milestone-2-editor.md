@@ -49,13 +49,18 @@ Same discipline as M1: each numbered item is roughly one commit, built TDD, veri
 
 **Outcome:** ✅ verified via `bun test` (25 tests, 46 assertions across 6 files, all real: real password hashing, real cookies, real session lookups, real role-assignment joins) rather than the `curl -c cookies.txt` smoke test the plan originally envisioned — the pg-mem TCP limitation above made that specific verification path a dead end in this sandbox. The behavior itself (sign up → cookie → authenticated request succeeds; no cookie → session resolves to `null`) is the same either way; only the transport differs. `pnpm typecheck`/`pnpm lint` exit 0 from repo root.
 
-### 3. `apps/server` — RBAC enforcement
+### 3. `apps/server` — RBAC enforcement ✅
 
-- [ ] A small `requireRole(...)` / `requirePermission(...)` middleware factory, checked against the resolved session's `role_assignments`, scoped by the request's `project`/`locale` path params where applicable.
-- [ ] Additive-only (§D4) — union every matching role assignment's permissions, no deny rules. A "locked" flag on the user row is the only revoke-everything mechanism, checked first and short-circuits to reject.
-- [ ] Applied to every existing + new write endpoint. Read endpoints (the M1 runtime delivery endpoint) stay public/unauthenticated — RBAC is for the editor's API, not the client-pull runtime contract M1 already shipped.
+- [x] `requireRole(db, roleNames)` middleware factory (`apps/server/src/middleware/require-role.ts`), checked against the resolved session's `role_assignments` (via the step-2 session middleware's `authContext`).
+- [x] Additive-only (§D4) — passes if the user has *any* role assignment matching any of `roleNames`, no deny rules. A `locked` boolean on the `user` table (migration `0010_user_locked.ts`) is the only revoke-everything mechanism, checked first and short-circuits to a 403 regardless of role.
+- [x] `createSessionMiddleware` (built in step 2 but deliberately not mounted yet) is now mounted globally in `createApp` (`app.use('*', ...)`) — it only resolves `authContext` (never rejects by itself), so the M1 runtime endpoint stays public/unauthenticated exactly as before; `requireRole` is what actually gates a route, and nothing mounts it on `/v1/*` yet.
 
-**Outcome:** a Viewer-scoped session gets a 403 from a translation-write endpoint even if it somehow reached the request (defense at the API layer, not just hidden buttons).
+**Design notes not in the original plan text:**
+- Split scope matching (project/locale) out of `requireRole` into a separate pure function, `hasScopedRole(authContext, roleNames, scope)` (`apps/server/src/middleware/scope.ts`). `requireRole` only checks *is any role present*; `hasScopedRole` is the one that respects §F3's "NULL means all" wildcarding per dimension, and dimensions not requested in `scope` are simply not checked. Kept it middleware-agnostic (plain function, not a `MiddlewareHandler`) since routes needing project/locale-scoped checks don't exist yet (that starts in step 6+) — no route wires it up yet, it's just tested standalone.
+- Mounting the session middleware globally required threading `db` through as a third argument to `createApp(store, auth, db)` — every caller (`src/index.ts`, and all four test files) updated accordingly. This is pure plumbing, not a behavior change: `db` was already being constructed by every caller to build `auth` in the first place.
+- The `locked` check lives in `requireRole` (queries the `user` table directly by `authContext.userId`) rather than being folded into `createSessionMiddleware`'s `authContext`, so an already-issued session's `authContext` doesn't need to be invalidated/recomputed the instant an admin flips the flag — the lock is enforced at the point of every gated request, not just at session-resolution time.
+
+**Outcome:** ✅ verified via `bun test` (5 tests for `requireRole` covering 401/403/200/additive-match/locked-user, 7 tests for `hasScopedRole`'s scope-matching rules, plus the existing suites updated for the `createApp` signature change and the `locked` column) — 37 tests total in `apps/server`, all passing. Full workspace re-run after the fix: 117 tests across all 7 packages, 0 failures. `pnpm typecheck`/`pnpm lint` exit 0 from repo root. A Viewer-scoped session would get a 403 from any route wrapped in `requireRole(db, [...])` even if it somehow reached the request; no route needs this yet since step 3 is infrastructure for steps 4+ (RBAC-gated write endpoints) and step 6+ (the editor's own project/locale-scoped checks via `hasScopedRole`).
 
 ### 4. `apps/server` — status machine
 

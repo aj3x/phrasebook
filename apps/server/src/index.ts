@@ -22,7 +22,7 @@ const authBaseURL = process.env.BETTER_AUTH_URL ?? `http://localhost:${port}`;
 const db = createDb(connectionString);
 const store = new PostgresStore(db);
 const auth = createAuth({ db, secret: authSecret, baseURL: authBaseURL });
-const app = createApp(store, auth);
+const app = createApp(store, auth, db);
 
 Bun.serve({
   fetch: app.fetch,

@@ -73,6 +73,8 @@ export interface UserTable {
   image: Nullable<string>;
   createdAt: Generated<Date>;
   updatedAt: Generated<Date>;
+  /** Added by migrations/0010_user_locked.ts -- ours, not better-auth's. */
+  locked: Generated<boolean>;
 }
 
 export interface SessionTable {

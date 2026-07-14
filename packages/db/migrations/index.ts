@@ -8,6 +8,7 @@ import { migration0006Keys } from './0006_keys';
 import { migration0007Translations } from './0007_translations';
 import { migration0008BetterAuth } from './0008_better_auth';
 import { migration0009Rbac } from './0009_rbac';
+import { migration0010UserLocked } from './0010_user_locked';
 
 export const migrations: Record<string, Migration> = {
   '0001_organizations': migration0001Organizations,
@@ -19,4 +20,5 @@ export const migrations: Record<string, Migration> = {
   '0007_translations': migration0007Translations,
   '0008_better_auth': migration0008BetterAuth,
   '0009_rbac': migration0009Rbac,
+  '0010_user_locked': migration0010UserLocked,
 };

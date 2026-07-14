@@ -21,21 +21,23 @@ class FakeStore implements Store {
 }
 
 // These tests only exercise the /v1/* runtime routes, not auth -- but
-// createApp needs a real Auth instance to mount, so build one against a
-// throwaway migrated db rather than hand-faking better-auth's large
-// inferred return type.
+// createApp needs a real Auth instance (and its db) to mount, so build one
+// against a throwaway migrated db rather than hand-faking better-auth's
+// large inferred return type.
 async function testAuth() {
   const db = await createMigratedTestDb();
-  return createAuth({
+  const auth = createAuth({
     db,
     secret: 'test-secret-at-least-32-characters-long',
     baseURL: 'http://localhost:3000',
   });
+  return { auth, db };
 }
 
 describe('GET /health', () => {
   test('returns 200 OK', async () => {
-    const app = createApp(new FakeStore(), await testAuth());
+    const { auth, db } = await testAuth();
+    const app = createApp(new FakeStore(), auth, db);
 
     const res = await app.request('/health');
 
@@ -45,6 +47,7 @@ describe('GET /health', () => {
 
 describe('GET /v1/runtime/:project/:locale/:namespace', () => {
   test('returns the bundle as JSON with an ETag and Cache-Control header', async () => {
+    const { auth, db } = await testAuth();
     const app = createApp(
       new FakeStore({
         'demo/fr/common': {
@@ -53,7 +56,8 @@ describe('GET /v1/runtime/:project/:locale/:namespace', () => {
           etag: '"3"',
         },
       }),
-      await testAuth(),
+      auth,
+      db,
     );
 
     const res = await app.request('/v1/runtime/demo/fr/common');
@@ -70,7 +74,8 @@ describe('GET /v1/runtime/:project/:locale/:namespace', () => {
   });
 
   test('returns 404 when the project, locale, or namespace is unknown', async () => {
-    const app = createApp(new FakeStore(), await testAuth());
+    const { auth, db } = await testAuth();
+    const app = createApp(new FakeStore(), auth, db);
 
     const res = await app.request('/v1/runtime/nope/fr/common');
 
@@ -78,6 +83,7 @@ describe('GET /v1/runtime/:project/:locale/:namespace', () => {
   });
 
   test('returns 304 with no body when If-None-Match matches the current etag', async () => {
+    const { auth, db } = await testAuth();
     const app = createApp(
       new FakeStore({
         'demo/fr/common': {
@@ -86,7 +92,8 @@ describe('GET /v1/runtime/:project/:locale/:namespace', () => {
           etag: '"3"',
         },
       }),
-      await testAuth(),
+      auth,
+      db,
     );
 
     const res = await app.request('/v1/runtime/demo/fr/common', {
@@ -98,6 +105,7 @@ describe('GET /v1/runtime/:project/:locale/:namespace', () => {
   });
 
   test('returns 200 with the full body when If-None-Match is stale', async () => {
+    const { auth, db } = await testAuth();
     const app = createApp(
       new FakeStore({
         'demo/fr/common': {
@@ -106,7 +114,8 @@ describe('GET /v1/runtime/:project/:locale/:namespace', () => {
           etag: '"3"',
         },
       }),
-      await testAuth(),
+      auth,
+      db,
     );
 
     const res = await app.request('/v1/runtime/demo/fr/common', {
@@ -117,11 +126,13 @@ describe('GET /v1/runtime/:project/:locale/:namespace', () => {
   });
 
   test('allows CORS from the demo-web dev origin', async () => {
+    const { auth, db } = await testAuth();
     const app = createApp(
       new FakeStore({
         'demo/fr/common': { keys: {}, version: 0, etag: '"0"' },
       }),
-      await testAuth(),
+      auth,
+      db,
     );
 
     const res = await app.request('/v1/runtime/demo/fr/common', {

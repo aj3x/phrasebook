@@ -18,6 +18,7 @@ describe('better-auth tables', () => {
 
     expect(user.email).toBe('ada@example.com');
     expect(user.emailVerified).toBe(false);
+    expect(user.locked).toBe(false);
 
     const session = await db
       .insertInto('session')
@@ -121,6 +122,26 @@ describe('better-auth tables', () => {
       .executeTakeFirstOrThrow();
 
     expect(verification.identifier).toBe('ada@example.com');
+
+    await db.destroy();
+  });
+
+  test('a user can be locked, the §D4/F3 revoke-everything mechanism', async () => {
+    const db = await createMigratedTestDb();
+
+    await db
+      .insertInto('user')
+      .values({ id: 'user_1', name: 'Ada', email: 'ada@example.com', emailVerified: false })
+      .execute();
+
+    const locked = await db
+      .updateTable('user')
+      .set({ locked: true })
+      .where('id', '=', 'user_1')
+      .returningAll()
+      .executeTakeFirstOrThrow();
+
+    expect(locked.locked).toBe(true);
 
     await db.destroy();
   });

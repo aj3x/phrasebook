@@ -13,7 +13,7 @@ async function createTestSetup() {
     secret: 'test-secret-at-least-32-characters-long',
     baseURL: 'http://localhost:3000',
   });
-  const app = createApp(new PostgresStore(db), auth);
+  const app = createApp(new PostgresStore(db), auth, db);
   return { db, auth, app };
 }
 
