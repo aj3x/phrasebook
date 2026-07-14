@@ -90,13 +90,20 @@ Same discipline as M1: each numbered item is roughly one commit, built TDD, veri
 
 **Outcome:** ✅ verified at both layers per the plan's stated bar: `PostgresStore.saveTranslation` (4 new tests covering unchanged/no-op-merge/conflict/no-snapshot-provided, `apps/server/test/store/postgres.test.ts`) and through HTTP with real RBAC (1 new test, `apps/server/test/translations.test.ts`) — two concurrent "sessions" editing the same translation: first save wins cleanly, a second save with a stale snapshot is rejected with `{ error: 'conflict', currentText }`. Full workspace re-run: 133 tests across all 7 packages, 0 failures. `pnpm typecheck`/`pnpm lint` exit 0 from repo root.
 
-### 6. `apps/editor` — scaffold + auth-gated shell
+### 6. `apps/editor` — scaffold + auth-gated shell ✅
 
-- [ ] Vite + React app, same shape as `demo-web` (step 10 of M1) but with TanStack Query wired for server state.
-- [ ] Login screen using better-auth's client SDK; authenticated shell redirects unauthenticated visitors back to it.
-- [ ] Project picker (a logged-in admin/dev can see projects their role assignments grant access to).
+- [x] Vite + React app, same shape as `demo-web` (step 10 of M1) but with TanStack Query wired for server state.
+- [x] Login screen using better-auth's client SDK (`better-auth/react`'s `createAuthClient`); the auth-gated shell (`App.tsx`) renders `LoginScreen` or `ProjectPicker` based on `authClient.useSession()` — no router yet, session state alone gates the two screens.
+- [x] Project picker (a logged-in user sees projects their role assignments grant access to) — backed by a new server endpoint, `GET /v1/projects` (M2 step 6a, its own commit), scoped by `AuthContext.roles` the same way `requireRole` already reads them.
 
-**Outcome:** `pnpm --filter @phrasebook/editor dev`, log in with the seeded admin, land on a project picker.
+**Design notes not in the original plan text:**
+- Split into two commits: 6a (`GET /v1/projects` + `Store.listAccessibleProjects`, backend-only, tested the same three-layer way as step 4/5) and 6b (the actual `apps/editor` scaffold).
+- `AuthClient` in `apps/editor/src/auth-client.ts` is a narrow hand-written interface covering only what `App`/`LoginScreen` actually call, not better-auth's full inferred `ReactAuthClient<Option>` type. `createAuthClient(...)`'s return value satisfies it structurally, but the narrow type is what makes the component tests possible: `test/fake-auth-client.ts` implements the same interface with a `useSyncExternalStore`-backed fake session (no real HTTP, no mocking the `better-auth` module), reacting to sign-in/sign-out exactly like the real client's internal store does.
+- `ProjectPicker`/`fetchAccessibleProjects` take an optional `fetchImpl` (same pattern `@phrasebook/core`'s `createClient` already established in M1), so tests substitute a fake fetch instead of hitting real HTTP.
+- No router added — M2's scope only needs two screens (login, project picker) for now; adding one now would be exactly the kind of premature infrastructure the working agreement warns against. Revisit once step 7+ needs URL-addressable project/key views.
+- `EDITOR_DEV_ORIGIN` in `apps/server/src/app.ts` no longer says "placeholder" now that `apps/editor/vite.config.ts` actually pins port 5174.
+
+**Outcome:** ✅ `pnpm --filter @phrasebook/editor dev` serves the app on port 5174; logging in with the seeded admin (`admin@phrasebook.local` / `phrasebook-dev-admin`) lands on a project picker showing every project (an instance-wide Admin grant). Verified via component tests (9 tests, Testing Library/vitest — login error/success paths, project list/empty-state/error-state, sign-out returning to login) and a `vite build` production build; this sandbox has no browser, so as an additional check beyond unit tests, ran a real end-to-end smoke test (real sign-up, real role assignment, real session cookie, real `GET /v1/projects` call against an in-process pg-mem-backed server) confirming the actual HTTP/CORS/cookie wiring the browser would exercise. Full workspace re-run: 142 tests across all 8 packages, 0 failures. `pnpm typecheck`/`pnpm lint` exit 0 from repo root.
 
 ### 7. `apps/editor` — key list (TanStack Table)
 
