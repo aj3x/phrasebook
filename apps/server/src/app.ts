@@ -3,9 +3,14 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { Kysely } from 'kysely';
 import type { Auth } from './auth';
+import { requireRole } from './middleware/require-role';
 import type { AuthContext } from './middleware/session';
 import { createSessionMiddleware } from './middleware/session';
+import { InvalidTransitionError } from './status';
 import type { Store } from './store/store';
+
+const CAN_SAVE_TRANSLATIONS = ['Admin', 'Developer', 'Translator', 'Reviewer'];
+const CAN_REVIEW_TRANSLATIONS = ['Admin', 'Developer', 'Reviewer'];
 
 // apps/editor doesn't exist yet (M2 step 6) -- this is a placeholder dev
 // port, the next one Vite picks when 5173 (demo-web) is taken. Update once
@@ -60,5 +65,95 @@ export function createApp(store: Store, auth: Auth, db: Kysely<Database>) {
     });
   });
 
+  app.put(
+    '/v1/projects/:project/translations/:namespace/:locale/:key',
+    requireRole(db, CAN_SAVE_TRANSLATIONS),
+    async (c) => {
+      const { project, namespace, locale, key } = c.req.param();
+      const body = await c.req.json().catch(() => ({}));
+      if (typeof body.targetText !== 'string') {
+        return c.json({ error: 'targetText is required' }, 400);
+      }
+
+      try {
+        const status = await store.saveTranslation({
+          project,
+          namespace,
+          locale,
+          key,
+          targetText: body.targetText,
+        });
+        return c.json({ status });
+      } catch (err) {
+        return c.json({ error: (err as Error).message }, 404);
+      }
+    },
+  );
+
+  app.post(
+    '/v1/projects/:project/translations/:namespace/:locale/:key/claim',
+    requireRole(db, CAN_REVIEW_TRANSLATIONS),
+    async (c) => {
+      const { project, namespace, locale, key } = c.req.param();
+      try {
+        const status = await store.claimTranslationForReview({ project, namespace, locale, key });
+        return c.json({ status });
+      } catch (err) {
+        return translationErrorResponse(c, err);
+      }
+    },
+  );
+
+  app.post(
+    '/v1/projects/:project/translations/:namespace/:locale/:key/approve',
+    requireRole(db, CAN_REVIEW_TRANSLATIONS),
+    async (c) => {
+      const { project, namespace, locale, key } = c.req.param();
+      try {
+        const status = await store.approveTranslation({ project, namespace, locale, key });
+        return c.json({ status });
+      } catch (err) {
+        return translationErrorResponse(c, err);
+      }
+    },
+  );
+
+  app.post(
+    '/v1/projects/:project/translations/:namespace/:locale/:key/send-back',
+    requireRole(db, CAN_REVIEW_TRANSLATIONS),
+    async (c) => {
+      const { project, namespace, locale, key } = c.req.param();
+      const body = await c.req.json().catch(() => ({}));
+      if (typeof body.comment !== 'string') {
+        return c.json({ error: 'comment is required' }, 400);
+      }
+
+      try {
+        const status = await store.sendTranslationBack(
+          { project, namespace, locale, key },
+          body.comment,
+        );
+        return c.json({ status });
+      } catch (err) {
+        return translationErrorResponse(c, err);
+      }
+    },
+  );
+
   return app;
+}
+
+/**
+ * A rejected state transition (§5's rules -- e.g. approving a translation
+ * that was never claimed) is a 409: the request is well-formed but
+ * conflicts with the resource's current state. Anything else here means
+ * resolveRefIds/findTranslation couldn't find the project/namespace/
+ * locale/key/translation at all, which is a 404.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: Hono's Context generic varies per call site; only c.json is used here.
+function translationErrorResponse(c: any, err: unknown) {
+  if (err instanceof InvalidTransitionError) {
+    return c.json({ error: err.message }, 409);
+  }
+  return c.json({ error: (err as Error).message }, 404);
 }
