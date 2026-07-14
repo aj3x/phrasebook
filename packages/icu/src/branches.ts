@@ -5,6 +5,7 @@ import {
   parse,
 } from '@formatjs/icu-messageformat-parser';
 import { printAST } from '@formatjs/icu-messageformat-parser/printer.js';
+import { canonicalize } from './canonicalize';
 
 /**
  * CLDR determines which branches a target locale requires (§5) -- resolved
@@ -56,25 +57,24 @@ export function extractPluralBranches(source: string): PluralBranches | undefine
  * syntax requires it; every other category is included only when it has
  * content, so a slot left blank falls back to `other` at render time
  * (§5) rather than saving a spurious empty branch.
+ *
+ * Builds the full message text and parses it in one pass (via
+ * `canonicalize`) rather than parsing each branch's text in isolation --
+ * `#` (the plural pound placeholder, e.g. "# items") only tokenizes as
+ * such *within* a plural branch; parsed standalone, the parser has no way
+ * to know it isn't just a literal `#` character, and printing that literal
+ * back inside a plural context would defensively re-escape it to `'#'`,
+ * silently breaking the placeholder every editor branch relies on.
  */
 export function assemblePluralMessage(input: PluralBranches): string {
-  const options: PluralElement['options'] = {};
+  const type = input.pluralType === 'ordinal' ? 'selectordinal' : 'plural';
+  const offsetPart = input.offset ? `offset:${input.offset} ` : '';
+  const branchesPart = Object.entries(input.branches)
+    .filter(([category, text]) => category === 'other' || text.trim() !== '')
+    .map(([category, text]) => `${category} {${text}}`)
+    .join(' ');
 
-  for (const [category, text] of Object.entries(input.branches)) {
-    if (category === 'other' || text.trim() !== '') {
-      options[category] = { value: parse(text) };
-    }
-  }
-
-  const pluralElement: PluralElement = {
-    type: TYPE.plural,
-    value: input.argument,
-    offset: input.offset,
-    pluralType: input.pluralType,
-    options,
-  };
-
-  return printAST([pluralElement]);
+  return canonicalize(`{${input.argument}, ${type}, ${offsetPart}${branchesPart}}`);
 }
 
 export interface PluralBranchSlot {

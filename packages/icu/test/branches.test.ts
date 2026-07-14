@@ -5,6 +5,7 @@ import {
   pluralBranchSlots,
   requiredPluralCategories,
 } from '../src/branches';
+import { format } from '../src/format';
 
 describe('requiredPluralCategories', () => {
   test('English cardinal requires only one/other', () => {
@@ -81,6 +82,24 @@ describe('assemblePluralMessage', () => {
       pluralType: 'cardinal',
       branches: { one: '# item', other: '# items' },
     });
+  });
+
+  test('the # pound placeholder actually substitutes the count when rendered, not a literal "#"', () => {
+    const message = assemblePluralMessage({
+      argument: 'count',
+      offset: 0,
+      pluralType: 'cardinal',
+      branches: { one: '# item', other: '# items' },
+    });
+
+    // A regression guard, not just round-tripping through extraction:
+    // extracting a branch's text back out uses printAST(option.value) with
+    // isInPlural=false, which would mask a live '#' having been silently
+    // escaped into a literal "'#'" during assembly (the escaped literal
+    // reads back out as unescaped text either way) -- only actually
+    // formatting the message catches that class of corruption.
+    expect(format(message, 'en', { count: 3 })).toBe('3 items');
+    expect(format(message, 'en', { count: 1 })).toBe('1 item');
   });
 
   test('always keeps the other branch even if empty (ICU requires it)', () => {
