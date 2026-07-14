@@ -253,3 +253,196 @@ describe('PostgresStore.putTranslation', () => {
     await db.destroy();
   });
 });
+
+const KEY_ID = '88888888-8888-8888-8888-888888888888';
+
+async function seedDemoKey(db: Awaited<ReturnType<typeof createMigratedTestDb>>) {
+  await db
+    .insertInto('keys')
+    .values({
+      id: KEY_ID,
+      namespace_id: '66666666-6666-6666-6666-666666666666',
+      name: 'home.hero.title',
+      source_text: 'Welcome',
+      source_hash: 'deadbeef',
+    })
+    .execute();
+}
+
+async function seedDemoTranslation(
+  db: Awaited<ReturnType<typeof createMigratedTestDb>>,
+  status: string,
+) {
+  await db
+    .insertInto('translations')
+    .values({
+      id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      key_id: KEY_ID,
+      locale_id: '44444444-4444-4444-4444-444444444444',
+      target_text: 'Bienvenue',
+      status,
+    })
+    .execute();
+}
+
+const DEMO_REF = { project: 'demo', namespace: 'common', locale: 'fr', key: 'home.hero.title' };
+
+describe('PostgresStore.saveTranslation', () => {
+  test('saves straight to approved when the project has auto-approve on (the default)', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+
+    const store = new PostgresStore(db);
+    const status = await store.saveTranslation({ ...DEMO_REF, targetText: 'Bienvenue' });
+
+    expect(status).toBe('approved');
+    const row = await db
+      .selectFrom('translations')
+      .select(['status', 'target_text'])
+      .where('key_id', '=', KEY_ID)
+      .executeTakeFirstOrThrow();
+    expect(row.status).toBe('approved');
+    expect(row.target_text).toBe('Bienvenue');
+
+    await db.destroy();
+  });
+
+  test('saves to needs_review when the project has auto-approve off', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await db
+      .updateTable('projects')
+      .set({ auto_approve: false })
+      .where('id', '=', '33333333-3333-3333-3333-333333333333')
+      .execute();
+    await seedDemoKey(db);
+
+    const store = new PostgresStore(db);
+    const status = await store.saveTranslation({ ...DEMO_REF, targetText: 'Bienvenue' });
+
+    expect(status).toBe('needs_review');
+
+    await db.destroy();
+  });
+
+  test('editing an already-approved translation resets it back into review, not silently staying approved', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await db
+      .updateTable('projects')
+      .set({ auto_approve: false })
+      .where('id', '=', '33333333-3333-3333-3333-333333333333')
+      .execute();
+    await seedDemoKey(db);
+    await seedDemoTranslation(db, 'approved');
+
+    const store = new PostgresStore(db);
+    const status = await store.saveTranslation({ ...DEMO_REF, targetText: 'Bienvenue (updated)' });
+
+    expect(status).toBe('needs_review');
+
+    await db.destroy();
+  });
+
+  test("throws when the project, namespace, locale, or key doesn't exist", async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+
+    const store = new PostgresStore(db);
+
+    await expect(
+      store.saveTranslation({ ...DEMO_REF, key: 'no.such.key', targetText: 'x' }),
+    ).rejects.toThrow();
+
+    await db.destroy();
+  });
+});
+
+describe('PostgresStore.claimTranslationForReview', () => {
+  test('claims an unclaimed needs_review translation', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+    await seedDemoTranslation(db, 'needs_review');
+
+    const store = new PostgresStore(db);
+    const status = await store.claimTranslationForReview(DEMO_REF);
+
+    expect(status).toBe('in_review');
+
+    await db.destroy();
+  });
+
+  test('rejects claiming an already-approved translation', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+    await seedDemoTranslation(db, 'approved');
+
+    const store = new PostgresStore(db);
+
+    await expect(store.claimTranslationForReview(DEMO_REF)).rejects.toThrow();
+
+    await db.destroy();
+  });
+});
+
+describe('PostgresStore.approveTranslation', () => {
+  test('approves a claimed (in_review) translation', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+    await seedDemoTranslation(db, 'in_review');
+
+    const store = new PostgresStore(db);
+    const status = await store.approveTranslation(DEMO_REF);
+
+    expect(status).toBe('approved');
+
+    await db.destroy();
+  });
+
+  test('rejects approving a translation that was never claimed', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+    await seedDemoTranslation(db, 'needs_review');
+
+    const store = new PostgresStore(db);
+
+    await expect(store.approveTranslation(DEMO_REF)).rejects.toThrow();
+
+    await db.destroy();
+  });
+});
+
+describe('PostgresStore.sendTranslationBack', () => {
+  test('sends a claimed translation back to needs_review with a comment', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+    await seedDemoTranslation(db, 'in_review');
+
+    const store = new PostgresStore(db);
+    const status = await store.sendTranslationBack(DEMO_REF, 'Please fix the tone here.');
+
+    expect(status).toBe('needs_review');
+
+    await db.destroy();
+  });
+
+  test('rejects a send-back with an empty comment', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+    await seedDemoTranslation(db, 'in_review');
+
+    const store = new PostgresStore(db);
+
+    await expect(store.sendTranslationBack(DEMO_REF, '')).rejects.toThrow();
+
+    await db.destroy();
+  });
+});

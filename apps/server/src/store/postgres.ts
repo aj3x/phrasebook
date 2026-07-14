@@ -1,10 +1,103 @@
 import type { Database } from '@phrasebook/db';
 import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
-import type { BundleResult, PutTranslationInput, Store } from './store';
+import {
+  type TranslationStatus,
+  approve,
+  claimForReview,
+  sendBack,
+  statusAfterSave,
+} from '../status';
+import type {
+  BundleResult,
+  PutTranslationInput,
+  SaveTranslationInput,
+  Store,
+  TranslationRef,
+} from './store';
 
 export class PostgresStore implements Store {
   constructor(private readonly db: Kysely<Database>) {}
+
+  private async resolveRefIds(ref: TranslationRef) {
+    const projectRow = await this.db
+      .selectFrom('projects')
+      .select(['id', 'auto_approve'])
+      .where('name', '=', ref.project)
+      .executeTakeFirstOrThrow(() => new Error(`Unknown project: ${ref.project}`));
+
+    const [namespaceRow, localeRow] = await Promise.all([
+      this.db
+        .selectFrom('namespaces')
+        .select('id')
+        .where('project_id', '=', projectRow.id)
+        .where('name', '=', ref.namespace)
+        .executeTakeFirstOrThrow(() => new Error(`Unknown namespace: ${ref.namespace}`)),
+      this.db
+        .selectFrom('locales')
+        .select('id')
+        .where('project_id', '=', projectRow.id)
+        .where('code', '=', ref.locale)
+        .executeTakeFirstOrThrow(() => new Error(`Unknown locale: ${ref.locale}`)),
+    ]);
+
+    const keyRow = await this.db
+      .selectFrom('keys')
+      .select('id')
+      .where('namespace_id', '=', namespaceRow.id)
+      .where('name', '=', ref.key)
+      .executeTakeFirstOrThrow(() => new Error(`Unknown key: ${ref.key}`));
+
+    return {
+      autoApprove: projectRow.auto_approve,
+      namespaceId: namespaceRow.id,
+      localeId: localeRow.id,
+      keyId: keyRow.id,
+    };
+  }
+
+  private async findTranslation(keyId: string, localeId: string) {
+    return this.db
+      .selectFrom('translations')
+      .select(['id', 'status'])
+      .where('key_id', '=', keyId)
+      .where('locale_id', '=', localeId)
+      .executeTakeFirstOrThrow(() => new Error('No translation exists for that key/locale yet'));
+  }
+
+  private async setStatus(translationId: string, status: TranslationStatus): Promise<void> {
+    await this.db
+      .updateTable('translations')
+      .set({ status, updated_at: sql`now()` })
+      .where('id', '=', translationId)
+      .execute();
+  }
+
+  private async upsertTranslation(
+    keyId: string,
+    localeId: string,
+    targetText: string,
+    status: string,
+  ): Promise<void> {
+    await this.db
+      .insertInto('translations')
+      .values({
+        id: crypto.randomUUID(),
+        key_id: keyId,
+        locale_id: localeId,
+        target_text: targetText,
+        status,
+      })
+      .onConflict((oc) =>
+        oc.columns(['key_id', 'locale_id']).doUpdateSet((eb) => ({
+          target_text: eb.ref('excluded.target_text'),
+          status: eb.ref('excluded.status'),
+          version: sql`translations.version + 1`,
+          updated_at: sql`now()`,
+        })),
+      )
+      .execute();
+  }
 
   async getBundle(
     project: string,
@@ -57,51 +150,38 @@ export class PostgresStore implements Store {
   }
 
   async putTranslation(input: PutTranslationInput): Promise<void> {
-    const projectRow = await this.db
-      .selectFrom('projects')
-      .select('id')
-      .where('name', '=', input.project)
-      .executeTakeFirstOrThrow(() => new Error(`Unknown project: ${input.project}`));
+    const { keyId, localeId } = await this.resolveRefIds(input);
+    await this.upsertTranslation(keyId, localeId, input.targetText, input.status);
+  }
 
-    const [namespaceRow, localeRow] = await Promise.all([
-      this.db
-        .selectFrom('namespaces')
-        .select('id')
-        .where('project_id', '=', projectRow.id)
-        .where('name', '=', input.namespace)
-        .executeTakeFirstOrThrow(() => new Error(`Unknown namespace: ${input.namespace}`)),
-      this.db
-        .selectFrom('locales')
-        .select('id')
-        .where('project_id', '=', projectRow.id)
-        .where('code', '=', input.locale)
-        .executeTakeFirstOrThrow(() => new Error(`Unknown locale: ${input.locale}`)),
-    ]);
+  async saveTranslation(input: SaveTranslationInput): Promise<TranslationStatus> {
+    const { autoApprove, keyId, localeId } = await this.resolveRefIds(input);
+    const status = statusAfterSave(autoApprove);
+    await this.upsertTranslation(keyId, localeId, input.targetText, status);
+    return status;
+  }
 
-    const keyRow = await this.db
-      .selectFrom('keys')
-      .select('id')
-      .where('namespace_id', '=', namespaceRow.id)
-      .where('name', '=', input.key)
-      .executeTakeFirstOrThrow(() => new Error(`Unknown key: ${input.key}`));
+  async claimTranslationForReview(ref: TranslationRef): Promise<TranslationStatus> {
+    const { keyId, localeId } = await this.resolveRefIds(ref);
+    const translation = await this.findTranslation(keyId, localeId);
+    const status = claimForReview(translation.status as TranslationStatus);
+    await this.setStatus(translation.id, status);
+    return status;
+  }
 
-    await this.db
-      .insertInto('translations')
-      .values({
-        id: crypto.randomUUID(),
-        key_id: keyRow.id,
-        locale_id: localeRow.id,
-        target_text: input.targetText,
-        status: input.status,
-      })
-      .onConflict((oc) =>
-        oc.columns(['key_id', 'locale_id']).doUpdateSet((eb) => ({
-          target_text: eb.ref('excluded.target_text'),
-          status: eb.ref('excluded.status'),
-          version: sql`translations.version + 1`,
-          updated_at: sql`now()`,
-        })),
-      )
-      .execute();
+  async approveTranslation(ref: TranslationRef): Promise<TranslationStatus> {
+    const { keyId, localeId } = await this.resolveRefIds(ref);
+    const translation = await this.findTranslation(keyId, localeId);
+    const status = approve(translation.status as TranslationStatus);
+    await this.setStatus(translation.id, status);
+    return status;
+  }
+
+  async sendTranslationBack(ref: TranslationRef, comment: string): Promise<TranslationStatus> {
+    const { keyId, localeId } = await this.resolveRefIds(ref);
+    const translation = await this.findTranslation(keyId, localeId);
+    const status = sendBack(translation.status as TranslationStatus, comment);
+    await this.setStatus(translation.id, status);
+    return status;
   }
 }

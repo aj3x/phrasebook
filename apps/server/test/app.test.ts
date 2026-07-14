@@ -2,7 +2,14 @@ import { describe, expect, test } from 'bun:test';
 import { createMigratedTestDb } from '@phrasebook/db/test-utils';
 import { createApp } from '../src/app';
 import { createAuth } from '../src/auth';
-import type { BundleResult, PutTranslationInput, Store } from '../src/store/store';
+import type { TranslationStatus } from '../src/status';
+import type {
+  BundleResult,
+  PutTranslationInput,
+  SaveTranslationInput,
+  Store,
+  TranslationRef,
+} from '../src/store/store';
 
 class FakeStore implements Store {
   constructor(private readonly bundles: Record<string, BundleResult> = {}) {}
@@ -16,6 +23,22 @@ class FakeStore implements Store {
   }
 
   async putTranslation(_input: PutTranslationInput): Promise<void> {
+    throw new Error('not used in these tests');
+  }
+
+  async saveTranslation(_input: SaveTranslationInput): Promise<TranslationStatus> {
+    throw new Error('not used in these tests');
+  }
+
+  async claimTranslationForReview(_ref: TranslationRef): Promise<TranslationStatus> {
+    throw new Error('not used in these tests');
+  }
+
+  async approveTranslation(_ref: TranslationRef): Promise<TranslationStatus> {
+    throw new Error('not used in these tests');
+  }
+
+  async sendTranslationBack(_ref: TranslationRef, _comment: string): Promise<TranslationStatus> {
     throw new Error('not used in these tests');
   }
 }
