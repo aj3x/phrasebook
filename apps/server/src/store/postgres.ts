@@ -11,7 +11,11 @@ import {
 import {
   type AccessibleProject,
   type BundleResult,
+  type KeyRow,
+  type ListKeysFilter,
+  type ListKeysRef,
   type ProjectAccessScope,
+  type ProjectDetail,
   type PutTranslationInput,
   SaveConflictError,
   type SaveTranslationInput,
@@ -22,7 +26,7 @@ import {
 export class PostgresStore implements Store {
   constructor(private readonly db: Kysely<Database>) {}
 
-  private async resolveRefIds(ref: TranslationRef) {
+  private async resolveProjectNamespaceLocale(ref: ListKeysRef) {
     const projectRow = await this.db
       .selectFrom('projects')
       .select(['id', 'auto_approve'])
@@ -44,19 +48,25 @@ export class PostgresStore implements Store {
         .executeTakeFirstOrThrow(() => new Error(`Unknown locale: ${ref.locale}`)),
     ]);
 
-    const keyRow = await this.db
-      .selectFrom('keys')
-      .select('id')
-      .where('namespace_id', '=', namespaceRow.id)
-      .where('name', '=', ref.key)
-      .executeTakeFirstOrThrow(() => new Error(`Unknown key: ${ref.key}`));
-
     return {
+      projectId: projectRow.id,
       autoApprove: projectRow.auto_approve,
       namespaceId: namespaceRow.id,
       localeId: localeRow.id,
-      keyId: keyRow.id,
     };
+  }
+
+  private async resolveRefIds(ref: TranslationRef) {
+    const { autoApprove, namespaceId, localeId } = await this.resolveProjectNamespaceLocale(ref);
+
+    const keyRow = await this.db
+      .selectFrom('keys')
+      .select('id')
+      .where('namespace_id', '=', namespaceId)
+      .where('name', '=', ref.key)
+      .executeTakeFirstOrThrow(() => new Error(`Unknown key: ${ref.key}`));
+
+    return { autoApprove, namespaceId, localeId, keyId: keyRow.id };
   }
 
   private async findTranslation(keyId: string, localeId: string) {
@@ -215,5 +225,75 @@ export class PostgresStore implements Store {
 
     const rows = await query.execute();
     return rows.map((row) => ({ name: row.name, sourceLocale: row.source_locale }));
+  }
+
+  async findProjectId(project: string): Promise<string | undefined> {
+    const row = await this.db
+      .selectFrom('projects')
+      .select('id')
+      .where('name', '=', project)
+      .executeTakeFirst();
+    return row?.id;
+  }
+
+  async getProjectDetail(project: string): Promise<ProjectDetail | undefined> {
+    const projectRow = await this.db
+      .selectFrom('projects')
+      .select(['id', 'name', 'source_locale'])
+      .where('name', '=', project)
+      .executeTakeFirst();
+    if (!projectRow) return undefined;
+
+    const [localeRows, namespaceRows] = await Promise.all([
+      this.db
+        .selectFrom('locales')
+        .select('code')
+        .where('project_id', '=', projectRow.id)
+        .execute(),
+      this.db
+        .selectFrom('namespaces')
+        .select('name')
+        .where('project_id', '=', projectRow.id)
+        .execute(),
+    ]);
+
+    return {
+      name: projectRow.name,
+      sourceLocale: projectRow.source_locale,
+      locales: localeRows.map((row) => row.code),
+      namespaces: namespaceRows.map((row) => row.name),
+    };
+  }
+
+  async listKeys(ref: ListKeysRef, filter?: ListKeysFilter): Promise<KeyRow[]> {
+    const { namespaceId, localeId } = await this.resolveProjectNamespaceLocale(ref);
+
+    const rows = await this.db
+      .selectFrom('keys')
+      .leftJoin('translations', (join) =>
+        join
+          .onRef('translations.key_id', '=', 'keys.id')
+          .on('translations.locale_id', '=', localeId),
+      )
+      .select([
+        'keys.name as keyName',
+        'keys.source_text as sourceText',
+        'translations.target_text as targetText',
+        'translations.status as status',
+      ])
+      .where('keys.namespace_id', '=', namespaceId)
+      .execute();
+
+    const keyRows: KeyRow[] = rows.map((row) => ({
+      key: row.keyName,
+      sourceText: row.sourceText,
+      targetText: row.targetText ?? '',
+      status: (row.status as TranslationStatus | null) ?? 'untranslated',
+    }));
+
+    if (filter?.status === undefined) {
+      return keyRows;
+    }
+    return keyRows.filter((row) => row.status === filter.status);
   }
 }

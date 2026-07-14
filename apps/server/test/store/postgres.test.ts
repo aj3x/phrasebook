@@ -607,3 +607,189 @@ describe('PostgresStore.listAccessibleProjects', () => {
     await db.destroy();
   });
 });
+
+describe('PostgresStore.findProjectId', () => {
+  test('returns the id for a known project', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+
+    const store = new PostgresStore(db);
+    const id = await store.findProjectId('demo');
+
+    expect(id).toBe('33333333-3333-3333-3333-333333333333');
+
+    await db.destroy();
+  });
+
+  test('returns undefined for an unknown project', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+
+    const store = new PostgresStore(db);
+    const id = await store.findProjectId('no-such-project');
+
+    expect(id).toBeUndefined();
+
+    await db.destroy();
+  });
+});
+
+describe('PostgresStore.getProjectDetail', () => {
+  test('returns name, source locale, and every locale/namespace for the project', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await db
+      .insertInto('locales')
+      .values({
+        id: '55555555-5555-5555-5555-555555555555',
+        project_id: '33333333-3333-3333-3333-333333333333',
+        code: 'es',
+      })
+      .execute();
+
+    const store = new PostgresStore(db);
+    const detail = await store.getProjectDetail('demo');
+
+    expect(detail?.name).toBe('demo');
+    expect(detail?.sourceLocale).toBe('en');
+    expect(detail?.locales).toEqual(expect.arrayContaining(['fr', 'es']));
+    expect(detail?.namespaces).toEqual(['common']);
+
+    await db.destroy();
+  });
+
+  test('returns undefined for an unknown project', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+
+    const store = new PostgresStore(db);
+    const detail = await store.getProjectDetail('no-such-project');
+
+    expect(detail).toBeUndefined();
+
+    await db.destroy();
+  });
+});
+
+describe('PostgresStore.listKeys', () => {
+  test('lists keys with their translation for the given namespace/locale, untranslated keys included', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await db
+      .insertInto('keys')
+      .values([
+        {
+          id: '88888888-8888-8888-8888-888888888888',
+          namespace_id: '66666666-6666-6666-6666-666666666666',
+          name: 'home.hero.title',
+          source_text: 'Welcome',
+          source_hash: 'deadbeef',
+        },
+        {
+          id: '99999999-9999-9999-9999-999999999999',
+          namespace_id: '66666666-6666-6666-6666-666666666666',
+          name: 'home.hero.subtitle',
+          source_text: 'Manage your translations',
+          source_hash: 'deadbeef2',
+        },
+      ])
+      .execute();
+    await db
+      .insertInto('translations')
+      .values({
+        id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        key_id: '88888888-8888-8888-8888-888888888888',
+        locale_id: '44444444-4444-4444-4444-444444444444',
+        target_text: 'Bienvenue',
+        status: 'approved',
+      })
+      .execute();
+
+    const store = new PostgresStore(db);
+    const keys = await store.listKeys({ project: 'demo', namespace: 'common', locale: 'fr' });
+
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        {
+          key: 'home.hero.title',
+          sourceText: 'Welcome',
+          targetText: 'Bienvenue',
+          status: 'approved',
+        },
+        {
+          key: 'home.hero.subtitle',
+          sourceText: 'Manage your translations',
+          targetText: '',
+          status: 'untranslated',
+        },
+      ]),
+    );
+    expect(keys).toHaveLength(2);
+
+    await db.destroy();
+  });
+
+  test('filters by status when a filter is given', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await db
+      .insertInto('keys')
+      .values([
+        {
+          id: '88888888-8888-8888-8888-888888888888',
+          namespace_id: '66666666-6666-6666-6666-666666666666',
+          name: 'home.hero.title',
+          source_text: 'Welcome',
+          source_hash: 'deadbeef',
+        },
+        {
+          id: '99999999-9999-9999-9999-999999999999',
+          namespace_id: '66666666-6666-6666-6666-666666666666',
+          name: 'home.hero.subtitle',
+          source_text: 'Manage your translations',
+          source_hash: 'deadbeef2',
+        },
+      ])
+      .execute();
+    await db
+      .insertInto('translations')
+      .values({
+        id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        key_id: '88888888-8888-8888-8888-888888888888',
+        locale_id: '44444444-4444-4444-4444-444444444444',
+        target_text: 'Bienvenue',
+        status: 'approved',
+      })
+      .execute();
+
+    const store = new PostgresStore(db);
+    const keys = await store.listKeys(
+      { project: 'demo', namespace: 'common', locale: 'fr' },
+      { status: 'untranslated' },
+    );
+
+    expect(keys).toEqual([
+      {
+        key: 'home.hero.subtitle',
+        sourceText: 'Manage your translations',
+        targetText: '',
+        status: 'untranslated',
+      },
+    ]);
+
+    await db.destroy();
+  });
+
+  test("throws when the project, namespace, or locale doesn't exist", async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+
+    const store = new PostgresStore(db);
+
+    await expect(
+      store.listKeys({ project: 'demo', namespace: 'no-such-namespace', locale: 'fr' }),
+    ).rejects.toThrow();
+
+    await db.destroy();
+  });
+});

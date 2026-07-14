@@ -41,6 +41,30 @@ export interface AccessibleProject {
   sourceLocale: string;
 }
 
+export interface ProjectDetail {
+  name: string;
+  sourceLocale: string;
+  locales: string[];
+  namespaces: string[];
+}
+
+export interface ListKeysRef {
+  project: string;
+  namespace: string;
+  locale: string;
+}
+
+export interface ListKeysFilter {
+  status?: string;
+}
+
+export interface KeyRow {
+  key: string;
+  sourceText: string;
+  targetText: string;
+  status: TranslationStatus;
+}
+
 /**
  * What projects a caller can see: `allProjects` is true when at least one
  * of the user's role assignments is instance-wide (§F3 -- a NULL
@@ -91,4 +115,7 @@ export interface Store {
   approveTranslation(ref: TranslationRef): Promise<TranslationStatus>;
   sendTranslationBack(ref: TranslationRef, comment: string): Promise<TranslationStatus>;
   listAccessibleProjects(scope: ProjectAccessScope): Promise<AccessibleProject[]>;
+  findProjectId(project: string): Promise<string | undefined>;
+  getProjectDetail(project: string): Promise<ProjectDetail | undefined>;
+  listKeys(ref: ListKeysRef, filter?: ListKeysFilter): Promise<KeyRow[]>;
 }

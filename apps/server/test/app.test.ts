@@ -6,7 +6,11 @@ import type { TranslationStatus } from '../src/status';
 import type {
   AccessibleProject,
   BundleResult,
+  KeyRow,
+  ListKeysFilter,
+  ListKeysRef,
   ProjectAccessScope,
+  ProjectDetail,
   PutTranslationInput,
   SaveTranslationInput,
   Store,
@@ -45,6 +49,18 @@ class FakeStore implements Store {
   }
 
   async listAccessibleProjects(_scope: ProjectAccessScope): Promise<AccessibleProject[]> {
+    throw new Error('not used in these tests');
+  }
+
+  async findProjectId(_project: string): Promise<string | undefined> {
+    throw new Error('not used in these tests');
+  }
+
+  async getProjectDetail(_project: string): Promise<ProjectDetail | undefined> {
+    throw new Error('not used in these tests');
+  }
+
+  async listKeys(_ref: ListKeysRef, _filter?: ListKeysFilter): Promise<KeyRow[]> {
     throw new Error('not used in these tests');
   }
 }
