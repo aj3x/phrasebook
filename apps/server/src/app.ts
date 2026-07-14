@@ -7,6 +7,7 @@ import { requireRole } from './middleware/require-role';
 import type { AuthContext } from './middleware/session';
 import { createSessionMiddleware } from './middleware/session';
 import { InvalidTransitionError } from './status';
+import { SaveConflictError } from './store/store';
 import type { Store } from './store/store';
 
 const CAN_SAVE_TRANSLATIONS = ['Admin', 'Developer', 'Translator', 'Reviewer'];
@@ -82,9 +83,13 @@ export function createApp(store: Store, auth: Auth, db: Kysely<Database>) {
           locale,
           key,
           targetText: body.targetText,
+          originalText: typeof body.originalText === 'string' ? body.originalText : undefined,
         });
         return c.json({ status });
       } catch (err) {
+        if (err instanceof SaveConflictError) {
+          return c.json({ error: 'conflict', currentText: err.currentText }, 409);
+        }
         return c.json({ error: (err as Error).message }, 404);
       }
     },

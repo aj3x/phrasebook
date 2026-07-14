@@ -162,6 +162,26 @@ describe('PUT /v1/projects/:project/translations/:namespace/:locale/:key', () =>
 
     await db.destroy();
   });
+
+  test('rejects a stale save (D22) with 409 and the currently stored value', async () => {
+    const { db, app } = await createTestSetup();
+    await seedTranslation(db, 'approved');
+    const cookie = await signUpWithRole(app, db, 'ada@example.com', BUILT_IN_ROLE_IDS.translator);
+
+    const res = await app.request(REF_PATH, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({
+        originalText: 'a stale snapshot from before someone else edited it',
+        targetText: 'my conflicting edit',
+      }),
+    });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'conflict', currentText: 'Bienvenue' });
+
+    await db.destroy();
+  });
 });
 
 describe('POST .../claim', () => {
