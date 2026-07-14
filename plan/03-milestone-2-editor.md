@@ -78,13 +78,17 @@ Same discipline as M1: each numbered item is roughly one commit, built TDD, veri
 
 **Outcome:** ✅ every transition in §5's "Transitions of note" list has a passing test exercising it directly against the module (19 tests, `apps/server/test/status.test.ts`), again against `PostgresStore` (real pg-mem SQL, `apps/server/test/store/postgres.test.ts`), and again through HTTP with real RBAC/auth (11 tests, `apps/server/test/translations.test.ts`) — the same three-layer TDD bar M1 held for the `Store` interface. Full workspace re-run: 128 tests across all 7 packages, 0 failures. `pnpm typecheck`/`pnpm lint` exit 0 from repo root.
 
-### 5. `apps/server` — save-time conflict detection (D22)
+### 5. `apps/server` — save-time conflict detection (D22) ✅
 
-- [ ] Save request carries the translator's original-text snapshot (what they started editing from) alongside the new value.
-- [ ] Server compares that snapshot against the current stored `target_text`: unchanged → save + advance status normally; changed-but-identical-to-new-value → fine, no-op merge; changed-and-different → reject with enough information (current stored value) for the client to show the diff, per the plan's stated UX ("keep their draft in the field, let them submit-over or cancel").
-- [ ] This is intentionally **not** a hard lock (§F6: "rely on the DB status for now, not a hard lock") — it's a save-time check, not a live-editing lock.
+- [x] Save request carries the translator's original-text snapshot (what they started editing from) alongside the new value — `SaveTranslationInput.originalText`, optional (omitting it skips the check entirely, so `putTranslation` and any snapshot-less caller are unaffected).
+- [x] Server compares that snapshot against the current stored `target_text`: unchanged → save + advance status normally; changed-but-identical-to-new-value → fine, no-op merge (falls through to the normal save path rather than a special-cased skip, since there's nothing left to reconcile); changed-and-different → reject with the current stored value (`SaveConflictError.currentText`) for the client to show the diff, per the plan's stated UX.
+- [x] Intentionally **not** a hard lock (§F6) — just a comparison at the moment of `saveTranslation`'s upsert, no lock table, no live-editing session concept.
 
-**Outcome:** two concurrent "sessions" (two `PostgresStore`-level calls in a test, no UI needed yet) editing the same translation — first save wins cleanly, second save with a stale snapshot is rejected with the right payload to let a client resolve it.
+**Design notes not in the original plan text:**
+- Split into two commits: 5a (`SaveConflictError` + the comparison logic in `PostgresStore.saveTranslation`, tested directly against the store) and 5b (HTTP wiring — the save endpoint accepts `originalText` in the body and maps `SaveConflictError` to a 409 with `{ error: 'conflict', currentText }`, distinct from the 409 `InvalidTransitionError` already used by claim/approve/send-back — both are "well-formed request, conflicts with current state," just two different kinds of conflict).
+- When no translation row exists yet, "the current stored value" is treated as `''` (matching `untranslated`'s "no target content") rather than throwing — so a first-ever save with a snapshot still gets a coherent comparison instead of a special-cased error path.
+
+**Outcome:** ✅ verified at both layers per the plan's stated bar: `PostgresStore.saveTranslation` (4 new tests covering unchanged/no-op-merge/conflict/no-snapshot-provided, `apps/server/test/store/postgres.test.ts`) and through HTTP with real RBAC (1 new test, `apps/server/test/translations.test.ts`) — two concurrent "sessions" editing the same translation: first save wins cleanly, a second save with a stale snapshot is rejected with `{ error: 'conflict', currentText }`. Full workspace re-run: 133 tests across all 7 packages, 0 failures. `pnpm typecheck`/`pnpm lint` exit 0 from repo root.
 
 ### 6. `apps/editor` — scaffold + auth-gated shell
 
