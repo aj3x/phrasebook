@@ -10,6 +10,7 @@
     "build": "vite build"
   },
   "dependencies": {
+    "@phrasebook/icu": "workspace:*",
     "@tanstack/react-query": "^5.101.2",
     "@tanstack/react-table": "^8.21.3",
     "better-auth": "^1.6.23",
