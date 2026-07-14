@@ -4,6 +4,11 @@
 3. pnpm install && pnpm --filter @phrasebook/demo-web dev
 4. Open http://localhost:5173, try the fr-CA locale specifically to see the fallback chain in action.
 
+## Editor (M2+)
+
+`pnpm --filter @phrasebook/editor dev`, then open http://localhost:5174 and log in with the
+seeded admin account below to land on the project picker.
+
 ## Dev admin login (M2+)
 
 `pnpm --filter @phrasebook/server seed` (also run automatically by `docker compose up`) creates a

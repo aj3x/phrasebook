@@ -13,9 +13,9 @@ import type { Store } from './store/store';
 const CAN_SAVE_TRANSLATIONS = ['Admin', 'Developer', 'Translator', 'Reviewer'];
 const CAN_REVIEW_TRANSLATIONS = ['Admin', 'Developer', 'Reviewer'];
 
-// apps/editor doesn't exist yet (M2 step 6) -- this is a placeholder dev
-// port, the next one Vite picks when 5173 (demo-web) is taken. Update once
-// the editor is actually scaffolded and its real dev port is known.
+// apps/editor's Vite dev server (vite.config.ts pins this explicitly so it
+// doesn't drift if some other app on 5173 changes which port Vite falls
+// back to).
 const EDITOR_DEV_ORIGIN = 'http://localhost:5174';
 
 export function createApp(store: Store, auth: Auth, db: Kysely<Database>) {
