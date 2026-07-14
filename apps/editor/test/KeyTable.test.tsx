@@ -65,4 +65,26 @@ describe('KeyTable', () => {
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowLeft' });
     expect(document.activeElement).toBe(firstCell);
   });
+
+  test('renders correctly at 50+ rows, and arrow keys still navigate to the last row', () => {
+    const manyRows: KeyRow[] = Array.from({ length: 55 }, (_, i) => ({
+      key: `key.${i}`,
+      sourceText: `Source ${i}`,
+      targetText: `Target ${i}`,
+      status: 'approved',
+    }));
+
+    render(<KeyTable rows={manyRows} />);
+
+    screen.getByText('key.0');
+    screen.getByText('key.54');
+    expect(screen.getAllByText('approved')).toHaveLength(55);
+
+    const firstCell = screen.getByText('key.0').closest('td') as HTMLElement;
+    firstCell.focus();
+    for (let i = 0; i < 54; i++) {
+      fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowDown' });
+    }
+    expect(document.activeElement).toBe(screen.getByText('key.54').closest('td'));
+  });
 });
