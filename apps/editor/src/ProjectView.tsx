@@ -135,6 +135,7 @@ export function ProjectView({ endpoint, project, onBack, fetchImpl }: ProjectVie
             <KeyTable
               key={`${effectiveNamespace}-${effectiveLocale}-${status}`}
               rows={keysQuery.data}
+              locale={effectiveLocale as string}
               onSave={handleSave}
             />
           )}

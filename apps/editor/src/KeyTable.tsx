@@ -4,8 +4,9 @@ import {
   getCoreRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
 import type { KeyRow, SaveOutcome } from './api';
+import { type PluralEditState, computePluralEditState, reassemblePluralEdit } from './icuEditing';
 
 const TARGET_COLUMN_INDEX = 2;
 
@@ -47,26 +48,40 @@ const columns = [
   }),
 ];
 
-type EditingState =
-  | {
-      mode: 'editing' | 'saving';
-      rowIndex: number;
-      key: string;
-      originalText: string;
-      draft: string;
-      errorMessage?: string;
-    }
-  | {
-      mode: 'conflict';
-      rowIndex: number;
-      key: string;
-      originalText: string;
-      draft: string;
-      currentText: string;
-    };
+type EditStatus = 'editing' | 'saving' | 'conflict';
+
+interface BaseEditingState {
+  rowIndex: number;
+  key: string;
+  originalText: string;
+  status: EditStatus;
+  currentText?: string;
+  errorMessage?: string;
+}
+
+interface PlainEditingState extends BaseEditingState {
+  kind: 'plain';
+  draft: string;
+}
+
+interface PluralEditingState extends BaseEditingState {
+  kind: 'plural';
+  meta: PluralEditState;
+  draft: Record<string, string>;
+}
+
+type EditingState = PlainEditingState | PluralEditingState;
+
+function computeNewText(state: EditingState): string {
+  if (state.kind === 'plural') {
+    return reassemblePluralEdit(state.meta, state.draft);
+  }
+  return state.draft;
+}
 
 export interface KeyTableProps {
   rows: KeyRow[];
+  locale: string;
   onSave: (key: string, originalText: string, targetText: string) => Promise<SaveOutcome>;
 }
 
@@ -81,8 +96,14 @@ export interface KeyTableProps {
  * currently-stored value visible, rather than a bare error dialog --
  * "submit anyway" retries with the stored value as the new snapshot
  * (guaranteed to succeed), "cancel" discards the draft.
+ *
+ * A key whose source is an ICU plural (M2 step 9) opens one slot per
+ * CLDR-required branch for `locale` instead of a single field --
+ * whichever branches are committed get reassembled into one ICU string
+ * (packages/icu) before calling onSave, so the save endpoint itself
+ * never needs to know per-branch editing happened.
  */
-export function KeyTable({ rows, onSave }: KeyTableProps) {
+export function KeyTable({ rows, locale, onSave }: KeyTableProps) {
   const [active, setActive] = useState({ row: 0, col: 0 });
   const [editing, setEditing] = useState<EditingState | null>(null);
   // Optimistic display state, keyed by key name: the parent's `rows` prop
@@ -107,51 +128,58 @@ export function KeyTable({ rows, onSave }: KeyTableProps) {
   }, [active, editing]);
 
   function startEditing(rowIndex: number, row: KeyRow) {
-    setEditing({
-      mode: 'editing',
-      rowIndex,
-      key: row.key,
-      originalText: row.targetText,
-      draft: row.targetText,
-    });
+    const pluralState = computePluralEditState(row, locale);
+    if (pluralState) {
+      const draft: Record<string, string> = {};
+      for (const slot of pluralState.slots) draft[slot.category] = slot.text;
+      setEditing({
+        kind: 'plural',
+        status: 'editing',
+        rowIndex,
+        key: row.key,
+        originalText: row.targetText,
+        meta: pluralState,
+        draft,
+      });
+    } else {
+      setEditing({
+        kind: 'plain',
+        status: 'editing',
+        rowIndex,
+        key: row.key,
+        originalText: row.targetText,
+        draft: row.targetText,
+      });
+    }
   }
 
-  async function commit(snapshotText: string, draft: string) {
-    if (!editing) return;
-    if (draft === snapshotText && editing.mode !== 'conflict') {
+  async function commit(snapshotText: string, current: EditingState) {
+    const newText = computeNewText(current);
+
+    if (newText === snapshotText && current.status !== 'conflict') {
       setEditing(null);
       return;
     }
 
-    const { rowIndex, key } = editing;
-    setEditing({ mode: 'saving', rowIndex, key, originalText: snapshotText, draft });
-    setOverrides((prev) => ({ ...prev, [key]: { targetText: draft, status: 'saving' } }));
+    const { key } = current;
+    setEditing({ ...current, status: 'saving' } as EditingState);
+    setOverrides((prev) => ({ ...prev, [key]: { targetText: newText, status: 'saving' } }));
 
-    const outcome = await onSave(key, snapshotText, draft);
+    const outcome = await onSave(key, snapshotText, newText);
 
     if (outcome.kind === 'success') {
-      setOverrides((prev) => ({ ...prev, [key]: { targetText: draft, status: outcome.status } }));
+      setOverrides((prev) => ({ ...prev, [key]: { targetText: newText, status: outcome.status } }));
       setEditing(null);
     } else if (outcome.kind === 'conflict') {
       setOverrides((prev) => omitKey(prev, key));
       setEditing({
-        mode: 'conflict',
-        rowIndex,
-        key,
-        originalText: snapshotText,
-        draft,
+        ...current,
+        status: 'conflict',
         currentText: outcome.currentText,
-      });
+      } as EditingState);
     } else {
       setOverrides((prev) => omitKey(prev, key));
-      setEditing({
-        mode: 'editing',
-        rowIndex,
-        key,
-        originalText: snapshotText,
-        draft,
-        errorMessage: outcome.message,
-      });
+      setEditing({ ...current, status: 'editing', errorMessage: outcome.message } as EditingState);
     }
   }
 
@@ -252,14 +280,30 @@ export function KeyTable({ rows, onSave }: KeyTableProps) {
 
 interface TargetCellEditorProps {
   state: EditingState;
-  onCommit: (snapshotText: string, draft: string) => void;
+  onCommit: (snapshotText: string, current: EditingState) => void;
   onCancel: () => void;
 }
 
 function TargetCellEditor({ state, onCommit, onCancel }: TargetCellEditorProps) {
-  const [draft, setDraft] = useState(state.draft);
+  if (state.kind === 'plural') {
+    return <PluralTargetCellEditor state={state} onCommit={onCommit} onCancel={onCancel} />;
+  }
+  return <PlainTargetCellEditor state={state} onCommit={onCommit} onCancel={onCancel} />;
+}
 
-  if (state.mode === 'conflict') {
+function PlainTargetCellEditor({
+  state,
+  onCommit,
+  onCancel,
+}: {
+  state: PlainEditingState;
+  onCommit: (snapshotText: string, current: EditingState) => void;
+  onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState(state.draft);
+  const saving = state.status === 'saving';
+
+  if (state.status === 'conflict') {
     return (
       <div>
         <input
@@ -269,7 +313,12 @@ function TargetCellEditor({ state, onCommit, onCancel }: TargetCellEditorProps) 
           autoFocus
         />
         <p>Current value: {state.currentText}</p>
-        <button type="button" onClick={() => onCommit(state.currentText, draft)}>
+        <button
+          type="button"
+          onClick={() =>
+            onCommit(state.currentText ?? '', { ...state, draft, kind: 'plain' as const })
+          }
+        >
           Submit anyway
         </button>
         <button type="button" onClick={onCancel}>
@@ -278,8 +327,6 @@ function TargetCellEditor({ state, onCommit, onCancel }: TargetCellEditorProps) 
       </div>
     );
   }
-
-  const saving = state.mode === 'saving';
 
   return (
     <div>
@@ -291,18 +338,95 @@ function TargetCellEditor({ state, onCommit, onCancel }: TargetCellEditorProps) 
           e.stopPropagation();
           if (e.key === 'Enter') {
             e.preventDefault();
-            onCommit(state.originalText, draft);
+            onCommit(state.originalText, { ...state, draft, kind: 'plain' as const });
           } else if (e.key === 'Escape') {
             e.preventDefault();
             onCancel();
           }
         }}
         onBlur={() => {
-          if (!saving) onCommit(state.originalText, draft);
+          if (!saving) onCommit(state.originalText, { ...state, draft, kind: 'plain' as const });
         }}
         // biome-ignore lint/a11y/noAutofocus: opening the editor is itself the user's explicit intent to type immediately.
         autoFocus
       />
+      {state.errorMessage && <p role="alert">{state.errorMessage}</p>}
+    </div>
+  );
+}
+
+function PluralTargetCellEditor({
+  state,
+  onCommit,
+  onCancel,
+}: {
+  state: PluralEditingState;
+  onCommit: (snapshotText: string, current: EditingState) => void;
+  onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState(state.draft);
+  const saving = state.status === 'saving';
+  const groupId = useId();
+  const groupRef = useRef<HTMLDivElement>(null);
+
+  function commitDraft(snapshotText: string) {
+    onCommit(snapshotText, { ...state, draft, kind: 'plural' as const });
+  }
+
+  // Blurring one branch input to focus another branch input in this same
+  // group isn't "leaving the cell" -- only commit once focus actually
+  // moves outside the whole editor, not on every individual field's blur.
+  function handleSlotBlur(e: React.FocusEvent<HTMLInputElement>) {
+    if (saving) return;
+    const nextFocused = e.relatedTarget as Node | null;
+    if (nextFocused && groupRef.current?.contains(nextFocused)) return;
+    commitDraft(state.originalText);
+  }
+
+  if (state.status === 'conflict') {
+    return (
+      <div>
+        <p>Current value: {state.currentText}</p>
+        <button type="button" onClick={() => commitDraft(state.currentText ?? '')}>
+          Submit anyway
+        </button>
+        <button type="button" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={groupRef}>
+      {state.meta.slots.map((slot) => {
+        const inputId = `${groupId}-${slot.category}`;
+        return (
+          <div key={slot.category}>
+            <label htmlFor={inputId}>{slot.category}</label>
+            <input
+              id={inputId}
+              value={draft[slot.category] ?? ''}
+              disabled={saving}
+              onChange={(e) => setDraft((d) => ({ ...d, [slot.category]: e.target.value }))}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  commitDraft(state.originalText);
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  onCancel();
+                }
+              }}
+              onBlur={handleSlotBlur}
+            />
+            {slot.isFallback && slot.category !== 'other' && (
+              <span>(falls back to the other branch at render time)</span>
+            )}
+          </div>
+        );
+      })}
       {state.errorMessage && <p role="alert">{state.errorMessage}</p>}
     </div>
   );

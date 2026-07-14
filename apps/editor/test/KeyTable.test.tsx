@@ -13,9 +13,16 @@ function neverUsedOnSave(): Promise<SaveOutcome> {
   throw new Error('onSave should not be called in this test');
 }
 
+function getTargetCell(keyText: string): Element {
+  const row = screen.getByText(keyText).closest('tr');
+  const cell = row?.children[2];
+  if (!cell) throw new Error(`expected a target-text cell for row "${keyText}"`);
+  return cell;
+}
+
 describe('KeyTable', () => {
   test('renders a row per key with source/target/status', () => {
-    render(<KeyTable rows={rows} onSave={neverUsedOnSave} />);
+    render(<KeyTable rows={rows} onSave={neverUsedOnSave} locale="fr" />);
 
     screen.getByText('a.b');
     screen.getByText('A-fr');
@@ -24,20 +31,20 @@ describe('KeyTable', () => {
   });
 
   test('shows a message when there are no keys matching the filters', () => {
-    render(<KeyTable rows={[]} onSave={neverUsedOnSave} />);
+    render(<KeyTable rows={[]} onSave={neverUsedOnSave} locale="fr" />);
 
     screen.getByText(/no keys match/i);
   });
 
   test('the first cell is focusable without any prior interaction', () => {
-    render(<KeyTable rows={rows} onSave={neverUsedOnSave} />);
+    render(<KeyTable rows={rows} onSave={neverUsedOnSave} locale="fr" />);
 
     const firstCell = screen.getByText('a.b').closest('td');
     expect(firstCell).toHaveProperty('tabIndex', 0);
   });
 
   test('arrow keys move the active (focused) cell', () => {
-    render(<KeyTable rows={rows} onSave={neverUsedOnSave} />);
+    render(<KeyTable rows={rows} onSave={neverUsedOnSave} locale="fr" />);
 
     const firstCell = screen.getByText('a.b').closest('td') as HTMLElement;
     firstCell.focus();
@@ -58,7 +65,7 @@ describe('KeyTable', () => {
   });
 
   test('arrow keys do not move past the edges of the grid', () => {
-    render(<KeyTable rows={rows} onSave={neverUsedOnSave} />);
+    render(<KeyTable rows={rows} onSave={neverUsedOnSave} locale="fr" />);
 
     const firstCell = screen.getByText('a.b').closest('td') as HTMLElement;
     firstCell.focus();
@@ -78,7 +85,7 @@ describe('KeyTable', () => {
       status: 'approved',
     }));
 
-    render(<KeyTable rows={manyRows} onSave={neverUsedOnSave} />);
+    render(<KeyTable rows={manyRows} onSave={neverUsedOnSave} locale="fr" />);
 
     screen.getByText('key.0');
     screen.getByText('key.54');
@@ -94,7 +101,7 @@ describe('KeyTable', () => {
 
   describe('inline editing', () => {
     test('double-clicking the target cell opens an editable field with the current value', () => {
-      render(<KeyTable rows={rows} onSave={neverUsedOnSave} />);
+      render(<KeyTable rows={rows} onSave={neverUsedOnSave} locale="fr" />);
 
       fireEvent.doubleClick(screen.getByText('A-fr'));
 
@@ -102,7 +109,7 @@ describe('KeyTable', () => {
     });
 
     test('pressing Enter while the target cell is focused (not editing) opens the editable field', () => {
-      render(<KeyTable rows={rows} onSave={neverUsedOnSave} />);
+      render(<KeyTable rows={rows} onSave={neverUsedOnSave} locale="fr" />);
 
       const targetCell = screen.getByText('A-fr').closest('td') as HTMLElement;
       // fireEvent.focus (not the raw DOM .focus()) so the resulting
@@ -117,7 +124,7 @@ describe('KeyTable', () => {
       const onSave = vi.fn(
         async (): Promise<SaveOutcome> => ({ kind: 'success', status: 'needs_review' }),
       );
-      render(<KeyTable rows={rows} onSave={onSave} />);
+      render(<KeyTable rows={rows} onSave={onSave} locale="fr" />);
 
       fireEvent.doubleClick(screen.getByText('A-fr'));
       const input = screen.getByRole('textbox');
@@ -141,7 +148,7 @@ describe('KeyTable', () => {
             resolveSave = resolve;
           }),
       );
-      render(<KeyTable rows={rows} onSave={onSave} />);
+      render(<KeyTable rows={rows} onSave={onSave} locale="fr" />);
 
       fireEvent.doubleClick(screen.getByText('A-fr'));
       const input = screen.getByRole('textbox');
@@ -162,7 +169,7 @@ describe('KeyTable', () => {
       const onSave = vi.fn(
         async (): Promise<SaveOutcome> => ({ kind: 'success', status: 'approved' }),
       );
-      render(<KeyTable rows={rows} onSave={onSave} />);
+      render(<KeyTable rows={rows} onSave={onSave} locale="fr" />);
 
       fireEvent.doubleClick(screen.getByText('A-fr'));
       const input = screen.getByRole('textbox');
@@ -175,7 +182,7 @@ describe('KeyTable', () => {
     });
 
     test('Escape cancels the edit without calling onSave', () => {
-      render(<KeyTable rows={rows} onSave={neverUsedOnSave} />);
+      render(<KeyTable rows={rows} onSave={neverUsedOnSave} locale="fr" />);
 
       fireEvent.doubleClick(screen.getByText('A-fr'));
       const input = screen.getByRole('textbox');
@@ -191,7 +198,7 @@ describe('KeyTable', () => {
         .fn<() => Promise<SaveOutcome>>()
         .mockResolvedValueOnce({ kind: 'conflict', currentText: 'A-fr (someone else)' })
         .mockResolvedValueOnce({ kind: 'success', status: 'needs_review' });
-      render(<KeyTable rows={rows} onSave={onSave} />);
+      render(<KeyTable rows={rows} onSave={onSave} locale="fr" />);
 
       fireEvent.doubleClick(screen.getByText('A-fr'));
       const input = screen.getByRole('textbox');
@@ -219,7 +226,7 @@ describe('KeyTable', () => {
           currentText: 'A-fr (someone else)',
         }),
       );
-      render(<KeyTable rows={rows} onSave={onSave} />);
+      render(<KeyTable rows={rows} onSave={onSave} locale="fr" />);
 
       fireEvent.doubleClick(screen.getByText('A-fr'));
       const input = screen.getByRole('textbox');
@@ -235,6 +242,92 @@ describe('KeyTable', () => {
       expect(onSave).toHaveBeenCalledTimes(1);
       expect(screen.queryByRole('textbox')).toBeNull();
       screen.getByText('A-fr');
+    });
+  });
+
+  describe('ICU plural per-branch editing', () => {
+    const pluralRows: KeyRow[] = [
+      {
+        key: 'cart.items',
+        sourceText: '{count, plural, one {# item} other {# items}}',
+        targetText: '',
+        status: 'untranslated',
+      },
+    ];
+
+    test('opens one slot per CLDR-required category for the target locale, not a single field', () => {
+      render(<KeyTable rows={pluralRows} onSave={neverUsedOnSave} locale="ar" />);
+
+      fireEvent.doubleClick(getTargetCell('cart.items'));
+
+      const textboxes = screen.getAllByRole('textbox');
+      expect(textboxes).toHaveLength(6);
+      screen.getByLabelText('zero');
+      screen.getByLabelText('other');
+    });
+
+    test('a category absent from the (untranslated) target is visually flagged as falling back, except "other" itself', () => {
+      render(<KeyTable rows={pluralRows} onSave={neverUsedOnSave} locale="ar" />);
+
+      fireEvent.doubleClick(getTargetCell('cart.items'));
+
+      // The target is untranslated (empty), so every category including
+      // "one" is unfilled in the target -- only "other" itself never shows
+      // the hint (it wouldn't make sense to say "other falls back to
+      // other").
+      expect(screen.getAllByText(/falls back to.*other/i)).toHaveLength(5);
+    });
+
+    test('committing reassembles the branches into one ICU message and saves it', async () => {
+      const onSave = vi.fn<
+        (key: string, originalText: string, targetText: string) => Promise<SaveOutcome>
+      >(async () => ({ kind: 'success', status: 'needs_review' }));
+      render(<KeyTable rows={pluralRows} onSave={onSave} locale="ar" />);
+
+      fireEvent.doubleClick(getTargetCell('cart.items'));
+
+      const oneInput = screen.getByLabelText('one');
+      fireEvent.change(oneInput, { target: { value: '# item' } });
+      const otherInput = screen.getByLabelText('other');
+      fireEvent.change(otherInput, { target: { value: '# items' } });
+      fireEvent.keyDown(otherInput, { key: 'Enter' });
+
+      await waitFor(() => {
+        expect(onSave).toHaveBeenCalled();
+      });
+
+      const call = onSave.mock.calls[0];
+      expect(call).toBeDefined();
+      if (!call) throw new Error('expected onSave to have been called');
+      const [key, originalText, newText] = call;
+      expect(key).toBe('cart.items');
+      expect(originalText).toBe('');
+      expect(newText).toContain('one{# item}');
+      expect(newText).toContain('other{# items}');
+    });
+
+    test('moving focus between branch inputs does not trigger a premature save', () => {
+      render(<KeyTable rows={pluralRows} onSave={neverUsedOnSave} locale="ar" />);
+
+      fireEvent.doubleClick(getTargetCell('cart.items'));
+
+      const oneInput = screen.getByLabelText('one');
+      const otherInput = screen.getByLabelText('other');
+      fireEvent.change(oneInput, { target: { value: '# item' } });
+      // Blurring to focus a sibling slot in the same editor isn't "leaving
+      // the cell" -- neverUsedOnSave would throw if this triggered a save.
+      fireEvent.blur(oneInput, { relatedTarget: otherInput });
+
+      // Still editing: the field we just typed into keeps its draft value.
+      expect(screen.getByLabelText('one')).toHaveProperty('value', '# item');
+    });
+
+    test('a plain (non-plural) key still shows a single input, not per-branch slots', () => {
+      render(<KeyTable rows={rows} onSave={neverUsedOnSave} locale="ar" />);
+
+      fireEvent.doubleClick(screen.getByText('A-fr'));
+
+      expect(screen.getAllByRole('textbox')).toHaveLength(1);
     });
   });
 });
