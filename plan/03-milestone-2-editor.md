@@ -24,14 +24,16 @@ That's it. Search, glossary, DNT, TM, inline QA, MT, notifications beyond in-app
 
 Same discipline as M1: each numbered item is roughly one commit, built TDD, verified before moving on. If an item balloons, split it.
 
-### 1. `packages/db` — auth + RBAC schema
+### 1. `packages/db` — auth + RBAC schema ✅
 
-- [ ] Tables for better-auth's adapter requirements (users, sessions, accounts — exact shape driven by whatever better-auth's Kysely/Postgres adapter expects; check their adapter docs before hand-designing this).
-- [ ] `roles` (id, name, is_custom) seeded with the five built-ins: Admin, Developer, Translator, Reviewer, Viewer.
-- [ ] `role_assignments` (user_id, role_id, project_id nullable, locale_code nullable) — nullable scope columns are how a role becomes locale/project-scoped (§F3) instead of instance-wide; NULL means "all."
-- [ ] No custom-role *creation* UI yet (that's a later milestone per F3's lite-mode note extended pragmatically to M2) — but the schema shouldn't preclude it. A custom role is just another row in `roles` with `is_custom = true`; the granular-permission-primitive mapping can wait.
+- [x] Tables for better-auth's adapter requirements (`user`, `session`, `account`, `verification`). The plan text said "check their adapter docs before hand-designing this" — the docs pages turned out to be genuinely incomplete (fetched three of them; none showed the actual field list or custom-Kysely-instance config shape). Installed `better-auth` + `@better-auth/kysely-adapter` locally and read `@better-auth/core`'s actual `getAuthTables()` source instead of guessing — got the exact, version-1.6.23-accurate field list, plus two things the docs didn't mention at all: (1) `kyselyAdapter(db, config)` accepts *any* pre-built `Kysely<any>` instance directly, so `apps/server` can hand it the exact same connection `createDb()` already makes — no second connection pool; (2) better-auth generates its own 32-char random alphanumeric IDs (`@better-auth/core`'s `generateId`), **not UUIDs** — these four tables use `text` primary keys, not this schema's usual `uuid`, because a `uuid` column would reject better-auth's own IDs.
+- [x] `roles` (id, name, is_custom) seeded with the five built-ins: Admin, Developer, Translator, Reviewer, Viewer — inserted directly in the migration (fixed UUIDs, exported as `BUILT_IN_ROLE_IDS`), not `seed.ts`: these are required system rows in every environment, not demo data.
+- [x] `role_assignments` (user_id, role_id, project_id nullable, locale_code nullable) — nullable scope columns are how a role becomes locale/project-scoped (§F3) instead of instance-wide; NULL means "all."
+- [x] No custom-role *creation* UI yet — schema doesn't preclude it (`is_custom` column already there).
 
-**Outcome:** migrations for the new tables, tested the same way M1's schema was — real constraint-rejection tests against `pg-mem`, not just "the table exists."
+**Design note not in the original plan text:** the four better-auth tables keep better-auth's own camelCase column naming (`emailVerified`, `createdAt`, etc.) instead of remapping to this schema's snake_case convention. better-auth's Kysely adapter supports a `fields: {...}` remap per model, so snake_case was possible — deliberately skipped it. These tables are better-auth's, not ours; using its defaults means schema drift across future better-auth version bumps is much less likely, at the cost of one naming-convention seam in the DB. Worth revisiting if it ever actually causes confusion in practice.
+
+**Outcome:** ✅ migrations `0008_better_auth.ts` and `0009_rbac.ts`, tested the same way M1's schema was — real constraint-rejection tests against `pg-mem` (orphan session/account FKs, duplicate session tokens, orphan role assignments, the five seeded roles, both instance-wide and project+locale-scoped assignments). `bun test` passes (12 tests, 30 assertions) in `packages/db`; every other package's test suite (schemas, icu, core, server, react, demo-web) re-run clean too since `Database`'s shape changed. `pnpm typecheck`/`pnpm lint` exit 0 from repo root.
 
 ### 2. `apps/server` — better-auth wiring + session middleware
 
