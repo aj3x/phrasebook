@@ -26,6 +26,7 @@ describe('ProjectPicker', () => {
       <ProjectPicker
         endpoint="https://api.example.com"
         onSignOut={() => {}}
+        onSelectProject={() => {}}
         fetchImpl={fetchImpl}
       />,
     );
@@ -45,6 +46,7 @@ describe('ProjectPicker', () => {
       <ProjectPicker
         endpoint="https://api.example.com"
         onSignOut={() => {}}
+        onSelectProject={() => {}}
         fetchImpl={fetchImpl}
       />,
     );
@@ -61,6 +63,7 @@ describe('ProjectPicker', () => {
       <ProjectPicker
         endpoint="https://api.example.com"
         onSignOut={() => {}}
+        onSelectProject={() => {}}
         fetchImpl={fetchImpl}
       />,
     );
@@ -78,6 +81,7 @@ describe('ProjectPicker', () => {
       <ProjectPicker
         endpoint="https://api.example.com"
         onSignOut={onSignOut}
+        onSelectProject={() => {}}
         fetchImpl={fetchImpl}
       />,
     );
@@ -85,5 +89,25 @@ describe('ProjectPicker', () => {
     fireEvent.click(screen.getByRole('button', { name: /sign out/i }));
 
     expect(onSignOut).toHaveBeenCalledOnce();
+  });
+
+  test('calls onSelectProject with the project name when a project is clicked', async () => {
+    const fetchImpl = async () =>
+      jsonResponse({ projects: [{ name: 'demo', sourceLocale: 'en' }] });
+    const onSelectProject = vi.fn();
+
+    renderWithQueryClient(
+      <ProjectPicker
+        endpoint="https://api.example.com"
+        onSignOut={() => {}}
+        onSelectProject={onSelectProject}
+        fetchImpl={fetchImpl}
+      />,
+    );
+
+    await waitFor(() => screen.getByText('demo (source: en)'));
+    fireEvent.click(screen.getByRole('button', { name: /demo \(source: en\)/i }));
+
+    expect(onSelectProject).toHaveBeenCalledWith('demo');
   });
 });

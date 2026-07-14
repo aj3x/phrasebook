@@ -4,10 +4,16 @@ import { type FetchImpl, fetchAccessibleProjects } from './api';
 export interface ProjectPickerProps {
   endpoint: string;
   onSignOut: () => void;
+  onSelectProject: (project: string) => void;
   fetchImpl?: FetchImpl;
 }
 
-export function ProjectPicker({ endpoint, onSignOut, fetchImpl }: ProjectPickerProps) {
+export function ProjectPicker({
+  endpoint,
+  onSignOut,
+  onSelectProject,
+  fetchImpl,
+}: ProjectPickerProps) {
   const { data, isPending, error } = useQuery({
     queryKey: ['accessible-projects', endpoint],
     queryFn: () => fetchAccessibleProjects(endpoint, fetchImpl),
@@ -27,7 +33,9 @@ export function ProjectPicker({ endpoint, onSignOut, fetchImpl }: ProjectPickerP
         <ul>
           {data.map((project) => (
             <li key={project.name}>
-              {project.name} (source: {project.sourceLocale})
+              <button type="button" onClick={() => onSelectProject(project.name)}>
+                {project.name} (source: {project.sourceLocale})
+              </button>
             </li>
           ))}
         </ul>

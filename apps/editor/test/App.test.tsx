@@ -9,6 +9,31 @@ function jsonResponse(body: unknown): Response {
 
 const fetchImpl = async () => jsonResponse({ projects: [{ name: 'demo', sourceLocale: 'en' }] });
 
+async function routingFetchImpl(input: RequestInfo | URL) {
+  const url = typeof input === 'string' ? input : input.toString();
+  if (url.includes('/keys')) {
+    return jsonResponse({
+      keys: [
+        {
+          key: 'home.hero.title',
+          sourceText: 'Welcome',
+          targetText: 'Bienvenue',
+          status: 'approved',
+        },
+      ],
+    });
+  }
+  if (/\/v1\/projects\/[^/]+$/.test(url)) {
+    return jsonResponse({
+      name: 'demo',
+      sourceLocale: 'en',
+      locales: ['fr'],
+      namespaces: ['common'],
+    });
+  }
+  return jsonResponse({ projects: [{ name: 'demo', sourceLocale: 'en' }] });
+}
+
 describe('App', () => {
   test('shows the login screen when there is no session', () => {
     const authClient = createFakeAuthClient();
@@ -50,6 +75,25 @@ describe('App', () => {
 
     await waitFor(() => {
       screen.getByRole('button', { name: /sign in/i });
+    });
+  });
+
+  test('selecting a project shows its key list', async () => {
+    const authClient = createFakeAuthClient('admin@phrasebook.local');
+    render(
+      <App
+        authClient={authClient}
+        endpoint="https://api.example.com"
+        fetchImpl={routingFetchImpl}
+      />,
+    );
+
+    await waitFor(() => screen.getByText('demo (source: en)'));
+    fireEvent.click(screen.getByRole('button', { name: /demo \(source: en\)/i }));
+
+    await waitFor(() => {
+      screen.getByText('home.hero.title');
+      screen.getByText('Bienvenue');
     });
   });
 });
