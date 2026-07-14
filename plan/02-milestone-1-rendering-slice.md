@@ -154,14 +154,20 @@ Needed one addition to `packages/core` not in the original plan text: `Client.re
 
 ### 11. Docker compose
 
-- [ ] `docker/docker-compose.yml`: `postgres:16`, `server` (built from `server.Dockerfile`).
-- [ ] Volume for Postgres data.
-- [ ] `docker/server.Dockerfile` from `oven/bun:1-alpine`; multi-stage: install → build → run.
-- [ ] Compose runs migrations + seed on first start (via an entrypoint script).
-- [ ] `.env.example` at repo root: `DATABASE_URL`, `PORT`, `BIND_ADDR`, `NODE_ENV`.
-- [ ] Demo app is *not* in docker (it's a dev-machine Vite server) — keeps `docker compose up` fast.
+- [x] `docker/docker-compose.yml`: `postgres:16`, `server` (built from `server.Dockerfile`). (Postgres landed back in step 4, pulled forward since `packages/db` needed something real to migrate against; `server` added now.)
+- [x] Volume for Postgres data.
+- [x] `docker/server.Dockerfile` from `oven/bun:1-alpine`; multi-stage: install → build → run. Since Bun runs TypeScript directly (no bundler/transpile step for this app), "build" is `pnpm install --frozen-lockfile` + `pnpm typecheck` as a build-time correctness gate, not artifact generation — the `runtime` stage copies the validated tree from `build` and sets the entrypoint.
+- [x] Compose runs migrations + seed on first start (via an entrypoint script) — `docker/server-entrypoint.sh` runs `db:migrate` then `seed` (both idempotent, so this is safe on every restart too, not just the first) then `exec`s the server so it becomes PID 1 for correct signal handling.
+- [x] `.env.example` at repo root: `DATABASE_URL`, `PORT`, `BIND_ADDR`, `NODE_ENV`. (Already existed from step 4.)
+- [x] Demo app is *not* in docker (it's a dev-machine Vite server) — keeps `docker compose up` fast.
 
-**Outcome:** the 5-minute path works from a clean clone.
+**A non-obvious bug avoided:** the `server` service's `BIND_ADDR` must be `0.0.0.0` inside the container, not the `127.0.0.1` that's correct for host-side local dev (`.env.example`) — binding loopback inside a container makes it unreachable from the host even with a port published, since Docker's port forwarding connects to the container's own network interface. Set directly in `docker-compose.yml`'s `environment:` block rather than sourced from `.env.example`, since the two contexts (host vs. container-internal) genuinely need different values (`postgres` as a DNS hostname vs. `127.0.0.1`, too).
+
+**Verified as much as this sandbox allows (no Docker here):** YAML validated (parses to the expected structure); `docker/server-entrypoint.sh` reviewed against the actual script names in `packages/db`/`apps/server`'s `package.json` (`db:migrate`, `seed`) which were confirmed working end-to-end back in steps 4–7. One real assumption checked rather than left on faith: whether `bun install -g pnpm` actually lands `pnpm` on `PATH` inside `oven/bun:1-alpine`. A local test without Docker showed Bun's *default* global-install location is **not** on `PATH` — but fetching the actual published `oven/bun` Dockerfile source confirmed the image sets `BUN_INSTALL_BIN=/usr/local/bin` (already on `PATH`) specifically to make `bun install -g` work out of the box, and the Dockerfile now also runs `pnpm --version` right after installing it, so a real regression here fails the build immediately instead of surfacing as a confusing later error.
+
+**Not verified:** an actual `docker compose up` from a clean clone — that remains for you to run. Everything upstream of it (migrations, seed, the server, the demo app) has been verified working via other means throughout this build.
+
+**Outcome:** the 5-minute path *should* work from a clean clone — please confirm with a real `docker compose up`.
 
 ### 12. Documentation for M1
 

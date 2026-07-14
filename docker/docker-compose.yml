@@ -16,5 +16,27 @@ services:
       timeout: 5s
       retries: 10
 
+  server:
+    build:
+      context: ..
+      dockerfile: docker/server.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Container-internal values: "postgres" is the service's DNS name on
+      # the compose network, and BIND_ADDR must be 0.0.0.0 here -- binding
+      # 127.0.0.1 (the right default for local non-Docker dev, see
+      # .env.example) would make the container's own loopback the only
+      # thing that can reach it, and the port mapping below would connect
+      # to nothing.
+      DATABASE_URL: postgres://phrasebook:phrasebook@postgres:5432/phrasebook
+      PORT: "3000"
+      BIND_ADDR: "0.0.0.0"
+      NODE_ENV: production
+    ports:
+      - "127.0.0.1:3000:3000"
+
 volumes:
   postgres-data:
