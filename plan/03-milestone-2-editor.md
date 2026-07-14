@@ -119,13 +119,19 @@ Same discipline as M1: each numbered item is roughly one commit, built TDD, veri
 
 **Outcome:** ✅ verified via component tests (Testing Library/vitest — 25 tests total across `KeyTable`/`ProjectView`/updated `ProjectPicker`/`App`) including a 55-row `KeyTable` render+keyboard-nav test satisfying the "50+ seeded keys" claim directly, plus the corresponding backend tests (Store + HTTP, `hasScopedRole` enforcement). Filters narrow the list correctly (status via query param, locale/namespace via re-fetch on selector change) and arrow keys move the active cell without a mouse, including at row 55 and clamped at the grid's edges. Full workspace re-run: 207 tests across all 8 packages, 0 failures. `pnpm typecheck`/`pnpm lint` exit 0 from repo root; `vite build` production build succeeds.
 
-### 8. `apps/editor` — inline translation editing + save
+### 8. `apps/editor` — inline translation editing + save ✅
 
-- [ ] Click/keyboard-activate a cell → inline editable field → save on blur/Enter, calls the step 4 save endpoint.
-- [ ] Wires the step 5 conflict payload: on a rejected save, show the stored value next to the draft, let the user submit-over or cancel (no raw error dialog).
-- [ ] Status updates optimistically in the table, reconciled against the server response.
+- [x] Click (double-click) or keyboard-activate (Enter on a focused target-text cell) → inline editable field → save on blur/Enter, calls the step 4 save endpoint (`api.ts`'s `saveTranslation`, `PUT .../translations/...`).
+- [x] Wires the step 5 conflict payload: a 409 keeps the cell in edit mode showing both the draft and the currently-stored value, with "submit anyway" (retries using the stored value as the new snapshot -- guaranteed to succeed since it now matches) and "cancel" (discards the draft) -- no raw error dialog.
+- [x] Status updates optimistically (an internal per-key override map in `KeyTable`, since it doesn't own the row data source of truth) — shows a transient "saving…" the instant a save is committed, then reconciled to the real status once the response arrives.
 
-**Outcome:** M2 DoD items 2 and 6 above, actually clicked through, not just unit-tested.
+**Design notes not in the original plan text:**
+- `saveTranslation` (api.ts) never throws -- it returns a `SaveOutcome` discriminated union (`success` / `conflict` / `error`), since a save-time conflict is an expected, routine outcome the caller needs to react to, not an exceptional one worth a try/catch.
+- `ProjectView` passes `key={`${namespace}-${locale}-${status}`}` to `KeyTable` so switching namespace/locale/status fully remounts it, resetting its internal editing/override state via React's own unmount/remount rather than requiring bespoke reset logic -- otherwise a stale optimistic override could leak into an unrelated key list.
+- Only one cell is editable at a time (the target-text column); key/source/status cells stay read-only and display-only.
+- Found and fixed a test-authoring pitfall while writing this step's tests, worth noting for future component tests here: calling the raw DOM `.focus()` method directly (not wrapped in `act()`) doesn't reliably flush the resulting React state update before the next synchronous line runs, unlike `fireEvent.focus(...)` which does. The existing arrow-key-navigation tests happened not to depend on this timing (their first active cell already matched the default state), but a new Enter-to-edit test exposed it.
+
+**Outcome:** ✅ M2 DoD items 2 and 6, verified via component tests (16 new — 30 total in `apps/editor`) exercising the full edit → save → reconcile flow and the conflict → submit-anyway/cancel flow, plus a `vite build` production build. This sandbox has no browser, so — consistent with steps 6/7 — this is Testing Library-level verification of the actual behavior (real state transitions, real fetch calls asserted by request body/URL), not a manual click-through.
 
 ### 9. `apps/editor` — ICU per-branch editing
 
