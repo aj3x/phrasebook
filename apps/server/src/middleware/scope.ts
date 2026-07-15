@@ -93,3 +93,49 @@ export function requireProjectAndLocaleScope(
     await next();
   };
 }
+
+/**
+ * Project-only sibling of requireProjectAndLocaleScope, for routes that
+ * carry :project but no :locale (project-level settings like the
+ * auto-approve toggle). Same auth+locked+project-scope check, minus the
+ * locale dimension -- a role grant scoped to a single locale within the
+ * project still counts as covering the project here, since the setting
+ * isn't locale-specific.
+ */
+export function requireProjectScope(
+  db: Kysely<Database>,
+  store: Store,
+  roleNames: string[],
+): MiddlewareHandler<Env> {
+  return async (c, next) => {
+    const authContext = c.get('authContext');
+    if (!authContext) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const user = await db
+      .selectFrom('user')
+      .select('locked')
+      .where('id', '=', authContext.userId)
+      .executeTakeFirst();
+    if (user?.locked) {
+      return c.json({ error: 'Account locked' }, 403);
+    }
+
+    const project = c.req.param('project');
+    if (!project) {
+      return c.json({ error: 'Not found' }, 404);
+    }
+
+    const projectId = await store.findProjectId(project);
+    if (!projectId) {
+      return c.json({ error: 'Not found' }, 404);
+    }
+
+    if (!hasScopedRole(authContext, roleNames, { projectId })) {
+      return c.json({ error: 'Forbidden' }, 403);
+    }
+
+    await next();
+  };
+}

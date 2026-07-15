@@ -60,6 +60,10 @@ class FakeStore implements Store {
     throw new Error('not used in these tests');
   }
 
+  async setProjectAutoApprove(_project: string, _autoApprove: boolean): Promise<boolean> {
+    throw new Error('not used in these tests');
+  }
+
   async listKeys(_ref: ListKeysRef, _filter?: ListKeysFilter): Promise<KeyRow[]> {
     throw new Error('not used in these tests');
   }

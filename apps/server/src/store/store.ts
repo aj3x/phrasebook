@@ -54,6 +54,7 @@ export interface ProjectDetail {
   sourceLocale: string;
   locales: string[];
   namespaces: string[];
+  autoApprove: boolean;
 }
 
 export interface ListKeysRef {
@@ -144,5 +145,6 @@ export interface Store {
   listAccessibleProjects(scope: ProjectAccessScope): Promise<AccessibleProject[]>;
   findProjectId(project: string): Promise<string | undefined>;
   getProjectDetail(project: string): Promise<ProjectDetail | undefined>;
+  setProjectAutoApprove(project: string, autoApprove: boolean): Promise<boolean>;
   listKeys(ref: ListKeysRef, filter?: ListKeysFilter): Promise<KeyRow[]>;
 }

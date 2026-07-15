@@ -309,7 +309,7 @@ export class PostgresStore implements Store {
   async getProjectDetail(project: string): Promise<ProjectDetail | undefined> {
     const projectRow = await this.db
       .selectFrom('projects')
-      .select(['id', 'name', 'source_locale'])
+      .select(['id', 'name', 'source_locale', 'auto_approve'])
       .where('name', '=', project)
       .executeTakeFirst();
     if (!projectRow) return undefined;
@@ -332,7 +332,20 @@ export class PostgresStore implements Store {
       sourceLocale: projectRow.source_locale,
       locales: localeRows.map((row) => row.code),
       namespaces: namespaceRows.map((row) => row.name),
+      autoApprove: projectRow.auto_approve,
     };
+  }
+
+  async setProjectAutoApprove(project: string, autoApprove: boolean): Promise<boolean> {
+    const result = await this.db
+      .updateTable('projects')
+      .set({ auto_approve: autoApprove })
+      .where('name', '=', project)
+      .executeTakeFirst();
+    if (result.numUpdatedRows === 0n) {
+      throw new Error(`Unknown project: ${project}`);
+    }
+    return autoApprove;
   }
 
   async listKeys(ref: ListKeysRef, filter?: ListKeysFilter): Promise<KeyRow[]> {

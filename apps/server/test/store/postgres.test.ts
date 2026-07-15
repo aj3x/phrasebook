@@ -754,6 +754,24 @@ describe('PostgresStore.getProjectDetail', () => {
     expect(detail?.sourceLocale).toBe('en');
     expect(detail?.locales).toEqual(expect.arrayContaining(['fr', 'es']));
     expect(detail?.namespaces).toEqual(['common']);
+    expect(detail?.autoApprove).toBe(true);
+
+    await db.destroy();
+  });
+
+  test('reflects a project with auto-approve turned off', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await db
+      .updateTable('projects')
+      .set({ auto_approve: false })
+      .where('id', '=', '33333333-3333-3333-3333-333333333333')
+      .execute();
+
+    const store = new PostgresStore(db);
+    const detail = await store.getProjectDetail('demo');
+
+    expect(detail?.autoApprove).toBe(false);
 
     await db.destroy();
   });
@@ -766,6 +784,52 @@ describe('PostgresStore.getProjectDetail', () => {
     const detail = await store.getProjectDetail('no-such-project');
 
     expect(detail).toBeUndefined();
+
+    await db.destroy();
+  });
+});
+
+describe('PostgresStore.setProjectAutoApprove', () => {
+  test('turns auto-approve off and reports the new value', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+
+    const store = new PostgresStore(db);
+    const updated = await store.setProjectAutoApprove('demo', false);
+
+    expect(updated).toBe(false);
+    const detail = await store.getProjectDetail('demo');
+    expect(detail?.autoApprove).toBe(false);
+
+    await db.destroy();
+  });
+
+  test('turns auto-approve back on', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await db
+      .updateTable('projects')
+      .set({ auto_approve: false })
+      .where('id', '=', '33333333-3333-3333-3333-333333333333')
+      .execute();
+
+    const store = new PostgresStore(db);
+    const updated = await store.setProjectAutoApprove('demo', true);
+
+    expect(updated).toBe(true);
+    const detail = await store.getProjectDetail('demo');
+    expect(detail?.autoApprove).toBe(true);
+
+    await db.destroy();
+  });
+
+  test('throws for an unknown project', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+
+    const store = new PostgresStore(db);
+
+    await expect(store.setProjectAutoApprove('no-such-project', false)).rejects.toThrow();
 
     await db.destroy();
   });

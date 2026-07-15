@@ -3,7 +3,11 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { Kysely } from 'kysely';
 import type { Auth } from './auth';
-import { hasScopedRole, requireProjectAndLocaleScope } from './middleware/scope';
+import {
+  hasScopedRole,
+  requireProjectAndLocaleScope,
+  requireProjectScope,
+} from './middleware/scope';
 import type { AuthContext } from './middleware/session';
 import { createSessionMiddleware } from './middleware/session';
 import { InvalidTransitionError } from './status';
@@ -12,6 +16,10 @@ import type { Store } from './store/store';
 
 const CAN_SAVE_TRANSLATIONS = ['Admin', 'Developer', 'Translator', 'Reviewer'];
 const CAN_REVIEW_TRANSLATIONS = ['Admin', 'Developer', 'Reviewer'];
+// Project configuration (e.g. the auto-approve review policy) is an admin/
+// dev concern -- translators and reviewers work within the policy, they
+// don't set it.
+const CAN_MANAGE_PROJECT = ['Admin', 'Developer'];
 const ANY_ROLE = ['Admin', 'Developer', 'Translator', 'Reviewer', 'Viewer'];
 
 // apps/editor's Vite dev server (vite.config.ts pins this explicitly so it
@@ -81,6 +89,21 @@ export function createApp(store: Store, auth: Auth, db: Kysely<Database>) {
     const detail = await store.getProjectDetail(project);
     return c.json(detail);
   });
+
+  app.patch(
+    '/v1/projects/:project/settings',
+    requireProjectScope(db, store, CAN_MANAGE_PROJECT),
+    async (c) => {
+      const { project } = c.req.param();
+      const body = await c.req.json().catch(() => ({}));
+      if (typeof body.autoApprove !== 'boolean') {
+        return c.json({ error: 'autoApprove (boolean) is required' }, 400);
+      }
+
+      const autoApprove = await store.setProjectAutoApprove(project, body.autoApprove);
+      return c.json({ autoApprove });
+    },
+  );
 
   app.get('/v1/projects/:project/keys', async (c) => {
     const authContext = c.get('authContext');

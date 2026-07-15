@@ -143,6 +143,7 @@ describe('GET /v1/projects/:project', () => {
       sourceLocale: 'en',
       locales: ['fr'],
       namespaces: ['common'],
+      autoApprove: true,
     });
 
     await db.destroy();
