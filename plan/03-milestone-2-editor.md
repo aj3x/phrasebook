@@ -146,13 +146,20 @@ Same discipline as M1: each numbered item is roughly one commit, built TDD, veri
 
 **Outcome:** ✅ editing `cart.items` for Arabic shows all six plural categories even though the English source only defines two, matching the exact CLDR-completeness guarantee `packages/icu`'s `format()` tests already proved for rendering — this is the same guarantee, now on the write path, verified by a dedicated regression test that actually formats the reassembled message rather than just re-extracting its text. 239 tests pass across the workspace (16 new: 13 in `packages/icu`, plus `apps/editor`'s `icuEditing`/`KeyTable` additions), `pnpm typecheck`/`pnpm lint` exit 0, `vite build` production build succeeds.
 
-### 10. `apps/editor` — reviewer workflow (claim / approve / send-back)
+### 10. `apps/editor` — reviewer workflow (claim / approve / send-back) ✅
 
-- [ ] `needs_review` items show a "claim" action (→ `in_review`); claimed items show approve/send-back actions.
-- [ ] Send-back requires a non-empty comment (enforced server-side per step 4, UI just can't submit without one).
-- [ ] Auto-approve toggle surfaced as a project setting somewhere reachable (doesn't need its own settings page yet — a single toggle on the project picker/header is enough for M2).
+- [x] `needs_review` rows show a "Claim" action (→ `in_review`); `in_review` rows show "Approve" and "Send back" (a new Actions column in `KeyTable`).
+- [x] Send-back reveals an inline comment field; its "Confirm send-back" button stays disabled until a non-empty comment is typed (the server enforces this too per §5, but the UI won't submit an empty one).
+- [x] Auto-approve toggle surfaced as a single checkbox in the `ProjectView` header, backed by a new `GET`/`PATCH /v1/projects/:project/settings` (step 10a) — flipping it off is what routes translator saves to `needs_review` instead of `approved`, making the review flow reachable.
 
-**Outcome:** M2 DoD items 4 and 5, clicked through end-to-end with the auto-approve toggle flipped both ways.
+**Design notes not in the original plan text:**
+- Split into two commits: 10a (backend — `auto_approve` exposed on `getProjectDetail` + the `PATCH .../settings` toggle endpoint, gated to Admin/Developer via a new `requireProjectScope` middleware, the project-only sibling of `requireProjectAndLocaleScope`) and 10b (the editor UI). The claim/approve/send-back *endpoints* already existed from steps 4–5, so no new backend was needed for those.
+- Review actions use a **busy-then-reconcile** flow, not the optimistic-status approach the save path uses: a review action is a single quick request, so a per-key busy flag plus the reconciled status (or the server's error message) is enough, and it sidesteps the "revert an optimistic status on failure without clobbering a prior save's targetText override" complexity. The one place optimism *is* used is the auto-approve checkbox (reflects the click immediately, reverts on server rejection), since a controlled checkbox that lags a click reads as broken.
+- The three review handlers are **optional** `KeyTable` props: a row's action only appears when both its status calls for it and the handler is wired, so the (hypothetical) edit-only surface doesn't have to pass no-op handlers. `ProjectView` always wires all three.
+- `api.ts`'s claim/approve/send-back return a non-throwing `ReviewOutcome` union that surfaces the **server's own** message — the H3 self-approval rejection ("You cannot approve a translation you edited yourself", added to the store by the SoD work in `a8c20c6`) already has good wording server-side, so the client just shows it rather than re-deriving one. This is the client-side counterpart to the SoD enforcement the user landed directly.
+- Separately: fixed a pre-existing formatting lint failure the SoD commit left on `master` (`translations.test.ts`), in its own commit, so `pnpm lint` passes again.
+
+**Outcome:** ✅ M2 DoD items 4 and 5. Verified via component tests (KeyTable's claim/approve/send-back visibility + flows + the SoD-error surfacing, 26 tests) and integration tests (`ProjectView` toggling auto-approve PATCHes `.../settings` with the new value; claiming a row POSTs `.../claim`), plus a `vite build`. `apps/server` 133 tests / `apps/editor` 51 tests pass; `pnpm typecheck`/`pnpm lint` exit 0. (This sandbox has no browser, so — consistent with steps 6–9 — "clicked through" is Testing-Library-level: real state transitions and real fetch calls asserted by URL/method/body, not a manual click-through.)
 
 ### 11. Comments/threads
 
