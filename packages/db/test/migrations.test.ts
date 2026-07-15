@@ -266,4 +266,108 @@ describe('migrations', () => {
 
     await db.destroy();
   });
+
+  test('creates comments on a key or a locale-scoped translation, cascading on key delete', async () => {
+    const db = await createMigratedTestDb();
+
+    await db
+      .insertInto('organizations')
+      .values({ id: '11111111-1111-1111-1111-111111111111', name: 'Acme' })
+      .execute();
+    await db
+      .insertInto('workspaces')
+      .values({
+        id: '22222222-2222-2222-2222-222222222222',
+        org_id: '11111111-1111-1111-1111-111111111111',
+        name: 'Acme Marketing',
+      })
+      .execute();
+    await db
+      .insertInto('projects')
+      .values({
+        id: '33333333-3333-3333-3333-333333333333',
+        workspace_id: '22222222-2222-2222-2222-222222222222',
+        name: 'Demo',
+        source_locale: 'en',
+      })
+      .execute();
+    await db
+      .insertInto('locales')
+      .values({
+        id: '44444444-4444-4444-4444-444444444444',
+        project_id: '33333333-3333-3333-3333-333333333333',
+        code: 'fr',
+      })
+      .execute();
+    await db
+      .insertInto('namespaces')
+      .values({
+        id: '66666666-6666-6666-6666-666666666666',
+        project_id: '33333333-3333-3333-3333-333333333333',
+        name: 'common',
+        authority: 'code',
+      })
+      .execute();
+    await db
+      .insertInto('keys')
+      .values({
+        id: '88888888-8888-8888-8888-888888888888',
+        namespace_id: '66666666-6666-6666-6666-666666666666',
+        name: 'home.hero.title',
+        source_text: 'Welcome',
+        source_hash: 'deadbeef',
+      })
+      .execute();
+    await db
+      .insertInto('user')
+      .values({ id: 'user-1', name: 'Rex Reviewer', email: 'rex@example.com' })
+      .execute();
+
+    // Key-level comment: no locale.
+    const keyComment = await db
+      .insertInto('comments')
+      .values({
+        id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+        key_id: '88888888-8888-8888-8888-888888888888',
+        author_id: 'user-1',
+        body: 'This key needs context.',
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+    expect(keyComment.locale_id).toBeNull();
+    expect(keyComment.body).toBe('This key needs context.');
+    expect(keyComment.created_at).toBeTruthy();
+
+    // Translation-level comment: locale-scoped.
+    await db
+      .insertInto('comments')
+      .values({
+        id: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
+        key_id: '88888888-8888-8888-8888-888888888888',
+        locale_id: '44444444-4444-4444-4444-444444444444',
+        author_id: 'user-1',
+        body: 'Please fix the tone.',
+      })
+      .execute();
+
+    // Orphan key_id is rejected.
+    await expect(
+      db
+        .insertInto('comments')
+        .values({
+          id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+          key_id: '99999999-9999-9999-9999-999999999999',
+          author_id: 'user-1',
+          body: 'orphan',
+        })
+        .execute(),
+    ).rejects.toThrow();
+
+    // Deleting the key cascades to its comments.
+    await db.deleteFrom('keys').where('id', '=', '88888888-8888-8888-8888-888888888888').execute();
+    const remaining = await db.selectFrom('comments').selectAll().execute();
+    expect(remaining).toHaveLength(0);
+
+    await db.destroy();
+  });
 });

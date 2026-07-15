@@ -131,6 +131,17 @@ export interface RoleAssignmentsTable {
   locale_code: Nullable<string>;
 }
 
+export interface CommentsTable {
+  id: string;
+  key_id: string;
+  /** NULL = key-level comment; set = scoped to that locale's translation. */
+  locale_id: Nullable<string>;
+  /** NULL after the author's user row is deleted (ON DELETE SET NULL). */
+  author_id: Nullable<string>;
+  body: string;
+  created_at: Generated<Date>;
+}
+
 export interface Database {
   organizations: OrganizationsTable;
   workspaces: WorkspacesTable;
@@ -145,4 +156,5 @@ export interface Database {
   verification: VerificationTable;
   roles: RolesTable;
   role_assignments: RoleAssignmentsTable;
+  comments: CommentsTable;
 }
