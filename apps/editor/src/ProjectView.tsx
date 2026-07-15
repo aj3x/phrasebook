@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useId, useState } from 'react';
+import { CommentThread } from './CommentThread';
 import { KeyTable } from './KeyTable';
 import {
   type FetchImpl,
@@ -223,6 +224,16 @@ export function ProjectView({ endpoint, project, onBack, fetchImpl }: ProjectVie
               onClaim={handleClaim}
               onApprove={handleApprove}
               onSendBack={handleSendBack}
+              renderComments={(key) => (
+                <CommentThread
+                  endpoint={endpoint}
+                  project={project}
+                  namespace={effectiveNamespace as string}
+                  locale={effectiveLocale as string}
+                  commentKey={key}
+                  fetchImpl={fetchImpl}
+                />
+              )}
             />
           )}
         </>

@@ -43,7 +43,10 @@ async function createTestSetup() {
       source_locale: 'en',
     })
     .execute();
-  await db.insertInto('locales').values({ id: LOCALE_ID, project_id: PROJECT_ID, code: 'fr' }).execute();
+  await db
+    .insertInto('locales')
+    .values({ id: LOCALE_ID, project_id: PROJECT_ID, code: 'fr' })
+    .execute();
   await db
     .insertInto('namespaces')
     .values({ id: NAMESPACE_ID, project_id: PROJECT_ID, name: 'common', authority: 'code' })

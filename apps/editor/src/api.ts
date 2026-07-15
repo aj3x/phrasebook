@@ -232,3 +232,62 @@ export async function setAutoApprove(
   const body = (await res.json()) as { autoApprove: boolean };
   return body.autoApprove;
 }
+
+export interface Comment {
+  id: string;
+  body: string;
+  authorEmail: string | null;
+  createdAt: string;
+}
+
+function commentPath(project: string, namespace: string, locale: string, key: string): string {
+  return [
+    'v1',
+    'projects',
+    encodeURIComponent(project),
+    'comments',
+    encodeURIComponent(namespace),
+    encodeURIComponent(locale),
+    encodeURIComponent(key),
+  ].join('/');
+}
+
+export async function fetchComments(
+  endpoint: string,
+  project: string,
+  namespace: string,
+  locale: string,
+  key: string,
+  fetchImpl: FetchImpl = fetch,
+): Promise<Comment[]> {
+  const res = await fetchImpl(`${endpoint}/${commentPath(project, namespace, locale, key)}`, {
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to load comments (${res.status})`);
+  }
+  const body = (await res.json()) as { comments: Comment[] };
+  return body.comments;
+}
+
+export async function postComment(
+  endpoint: string,
+  project: string,
+  namespace: string,
+  locale: string,
+  key: string,
+  body: string,
+  fetchImpl: FetchImpl = fetch,
+): Promise<Comment> {
+  const res = await fetchImpl(`${endpoint}/${commentPath(project, namespace, locale, key)}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body }),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to post comment (${res.status})`);
+  }
+  const payload = (await res.json()) as { comment: Comment };
+  return payload.comment;
+}

@@ -4,7 +4,7 @@ import {
   getCoreRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
+import { Fragment, type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
 import type { KeyRow, ReviewOutcome, SaveOutcome } from './api';
 import { type PluralEditState, computePluralEditState, reassemblePluralEdit } from './icuEditing';
 
@@ -90,6 +90,10 @@ export interface KeyTableProps {
   onClaim?: (key: string) => Promise<ReviewOutcome>;
   onApprove?: (key: string) => Promise<ReviewOutcome>;
   onSendBack?: (key: string, comment: string) => Promise<ReviewOutcome>;
+  // Comment thread (M2 step 11) -- when provided, each row gets a Comments
+  // toggle that expands the returned thread; kept a render prop so KeyTable
+  // stays decoupled from the comments API/endpoint.
+  renderComments?: (key: string) => React.ReactNode;
 }
 
 /**
@@ -110,9 +114,18 @@ export interface KeyTableProps {
  * (packages/icu) before calling onSave, so the save endpoint itself
  * never needs to know per-branch editing happened.
  */
-export function KeyTable({ rows, locale, onSave, onClaim, onApprove, onSendBack }: KeyTableProps) {
+export function KeyTable({
+  rows,
+  locale,
+  onSave,
+  onClaim,
+  onApprove,
+  onSendBack,
+  renderComments,
+}: KeyTableProps) {
   const [active, setActive] = useState({ row: 0, col: 0 });
   const [editing, setEditing] = useState<EditingState | null>(null);
+  const [openComments, setOpenComments] = useState<Set<string>>(new Set());
   // Optimistic display state, keyed by key name: the parent's `rows` prop
   // only reflects reality after its own query refetches, which lags
   // behind a save's response -- this is what makes a just-saved cell show
@@ -210,6 +223,18 @@ export function KeyTable({ rows, locale, onSave, onClaim, onApprove, onSendBack 
     }
   }
 
+  function toggleComments(key: string) {
+    setOpenComments((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }
+
   function handleTableKeyDown(e: KeyboardEvent<HTMLTableElement>) {
     if (editing) return;
     switch (e.key) {
@@ -262,62 +287,75 @@ export function KeyTable({ rows, locale, onSave, onClaim, onApprove, onSendBack 
       <tbody>
         {tableRows.map((row, rowIndex) => {
           const rowKey = row.original.key;
+          const commentsOpen = openComments.has(rowKey);
           return (
-            <tr key={row.id}>
-              {row.getVisibleCells().map((cell, colIndex) => {
-                const isActive = active.row === rowIndex && active.col === colIndex;
-                const isEditingThisCell =
-                  colIndex === TARGET_COLUMN_INDEX && editing?.rowIndex === rowIndex;
+            <Fragment key={row.id}>
+              <tr>
+                {row.getVisibleCells().map((cell, colIndex) => {
+                  const isActive = active.row === rowIndex && active.col === colIndex;
+                  const isEditingThisCell =
+                    colIndex === TARGET_COLUMN_INDEX && editing?.rowIndex === rowIndex;
 
-                return (
-                  <td
-                    key={cell.id}
-                    ref={(el) => {
-                      if (el) {
-                        cellRefs.current.set(`${rowIndex}-${colIndex}`, el);
-                      } else {
-                        cellRefs.current.delete(`${rowIndex}-${colIndex}`);
-                      }
-                    }}
-                    tabIndex={isActive ? 0 : -1}
-                    onFocus={() => {
-                      if (!editing) setActive({ row: rowIndex, col: colIndex });
-                    }}
-                    onDoubleClick={() => {
-                      if (colIndex === TARGET_COLUMN_INDEX && !editing) {
-                        startEditing(rowIndex, row.original);
-                      }
-                    }}
-                  >
-                    {isEditingThisCell && editing ? (
-                      <TargetCellEditor
-                        state={editing}
-                        onCommit={commit}
-                        onCancel={() => setEditing(null)}
-                      />
-                    ) : (
-                      flexRender(cell.column.columnDef.cell, cell.getContext())
-                    )}
-                  </td>
-                );
-              })}
-              <td>
-                <RowActions
-                  status={row.original.status}
-                  busy={reviewBusy[rowKey] ?? false}
-                  error={reviewErrors[rowKey]}
-                  onClaim={onClaim ? () => runReview(rowKey, () => onClaim(rowKey)) : undefined}
-                  onApprove={
-                    onApprove ? () => runReview(rowKey, () => onApprove(rowKey)) : undefined
-                  }
-                  onSendBack={
-                    onSendBack
-                      ? (comment) => runReview(rowKey, () => onSendBack(rowKey, comment))
-                      : undefined
-                  }
-                />
-              </td>
-            </tr>
+                  return (
+                    <td
+                      key={cell.id}
+                      ref={(el) => {
+                        if (el) {
+                          cellRefs.current.set(`${rowIndex}-${colIndex}`, el);
+                        } else {
+                          cellRefs.current.delete(`${rowIndex}-${colIndex}`);
+                        }
+                      }}
+                      tabIndex={isActive ? 0 : -1}
+                      onFocus={() => {
+                        if (!editing) setActive({ row: rowIndex, col: colIndex });
+                      }}
+                      onDoubleClick={() => {
+                        if (colIndex === TARGET_COLUMN_INDEX && !editing) {
+                          startEditing(rowIndex, row.original);
+                        }
+                      }}
+                    >
+                      {isEditingThisCell && editing ? (
+                        <TargetCellEditor
+                          state={editing}
+                          onCommit={commit}
+                          onCancel={() => setEditing(null)}
+                        />
+                      ) : (
+                        flexRender(cell.column.columnDef.cell, cell.getContext())
+                      )}
+                    </td>
+                  );
+                })}
+                <td>
+                  <RowActions
+                    status={row.original.status}
+                    busy={reviewBusy[rowKey] ?? false}
+                    error={reviewErrors[rowKey]}
+                    onClaim={onClaim ? () => runReview(rowKey, () => onClaim(rowKey)) : undefined}
+                    onApprove={
+                      onApprove ? () => runReview(rowKey, () => onApprove(rowKey)) : undefined
+                    }
+                    onSendBack={
+                      onSendBack
+                        ? (comment) => runReview(rowKey, () => onSendBack(rowKey, comment))
+                        : undefined
+                    }
+                  />
+                  {renderComments && (
+                    <button type="button" onClick={() => toggleComments(rowKey)}>
+                      {commentsOpen ? 'Hide comments' : 'Comments'}
+                    </button>
+                  )}
+                </td>
+              </tr>
+              {renderComments && commentsOpen && (
+                <tr>
+                  <td colSpan={columnCount + 1}>{renderComments(rowKey)}</td>
+                </tr>
+              )}
+            </Fragment>
           );
         })}
       </tbody>

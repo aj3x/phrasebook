@@ -475,4 +475,51 @@ describe('KeyTable', () => {
       within(rowFor('k.inreview')).getByRole('button', { name: /approve/i });
     });
   });
+
+  describe('comment threads', () => {
+    test('no Comments toggle when renderComments is not provided', () => {
+      render(<KeyTable rows={rows} onSave={neverUsedOnSave} locale="fr" />);
+
+      expect(screen.queryByRole('button', { name: /comments/i })).toBeNull();
+    });
+
+    test('expands and collapses a row-scoped comment thread', () => {
+      render(
+        <KeyTable
+          rows={rows}
+          onSave={neverUsedOnSave}
+          locale="fr"
+          renderComments={(key) => <div>thread for {key}</div>}
+        />,
+      );
+
+      const firstRow = screen.getByText('a.b').closest('tr') as HTMLElement;
+      const toggle = within(firstRow).getByRole('button', { name: /comments/i });
+
+      expect(screen.queryByText('thread for a.b')).toBeNull();
+
+      fireEvent.click(toggle);
+      screen.getByText('thread for a.b');
+
+      fireEvent.click(within(firstRow).getByRole('button', { name: /comments/i }));
+      expect(screen.queryByText('thread for a.b')).toBeNull();
+    });
+
+    test('renders the thread for the row whose toggle was clicked', () => {
+      render(
+        <KeyTable
+          rows={rows}
+          onSave={neverUsedOnSave}
+          locale="fr"
+          renderComments={(key) => <div>thread for {key}</div>}
+        />,
+      );
+
+      const secondRow = screen.getByText('c.d').closest('tr') as HTMLElement;
+      fireEvent.click(within(secondRow).getByRole('button', { name: /comments/i }));
+
+      screen.getByText('thread for c.d');
+      expect(screen.queryByText('thread for a.b')).toBeNull();
+    });
+  });
 });
