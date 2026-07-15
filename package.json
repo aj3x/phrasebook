@@ -9,6 +9,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "dev": "dotenv -- pnpm -r --if-present dev",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "build": "pnpm -r --if-present build",
@@ -19,6 +20,7 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@types/node": "^22.10.0",
+    "dotenv-cli": "^8.0.0",
     "typescript": "^5.6.3"
   }
 }
