@@ -161,13 +161,25 @@ Same discipline as M1: each numbered item is roughly one commit, built TDD, veri
 
 **Outcome:** ✅ M2 DoD items 4 and 5. Verified via component tests (KeyTable's claim/approve/send-back visibility + flows + the SoD-error surfacing, 26 tests) and integration tests (`ProjectView` toggling auto-approve PATCHes `.../settings` with the new value; claiming a row POSTs `.../claim`), plus a `vite build`. `apps/server` 133 tests / `apps/editor` 51 tests pass; `pnpm typecheck`/`pnpm lint` exit 0. (This sandbox has no browser, so — consistent with steps 6–9 — "clicked through" is Testing-Library-level: real state transitions and real fetch calls asserted by URL/method/body, not a manual click-through.)
 
-### 11. Comments/threads
+### 11. Comments/threads ✅
 
-- [ ] Minimal schema: comments on a key or a specific translation (locale-scoped), author, body, timestamp.
-- [ ] Required for send-back (step 10); also just visible as a thread on the key/translation in the editor.
-- [ ] This **is** the "TMS notes" entity per §4's metadata-authority note — no separate notes field.
+- [x] Minimal schema (`comments` table, migration `0013`): `key_id` + nullable `locale_id` (NULL = key-level, set = translation-scoped), `author_id` (nullable, `ON DELETE SET NULL`), `body`, `created_at`.
+- [x] Required for send-back (step 10): `sendTranslationBack` now threads the reviewer's id through and persists its (already-non-empty-validated) comment — the gap flagged back in step 4 is closed. Also visible + appendable as a thread in the editor (an expandable per-row `CommentThread`).
+- [x] This **is** the "TMS notes" entity per §4's metadata-authority note — no separate notes field; the schema and the editor both treat comments as the single discussion/notes mechanism.
 
-**Outcome:** a send-back comment shows up in the thread; the thread persists and is visible to anyone with read access to that key.
+**Design notes not in the original plan text:**
+- Split into four commits: 11a (schema), 11b (store `addComment`/`listComments` + send-back persistence), 11c (HTTP `GET`/`POST .../comments/...` + wiring the reviewer id into send-back), 11d (editor UI).
+- `listComments(ref)` returns key-level (locale NULL) **plus** the requested locale's comments, chronologically — other locales' translation-scoped threads stay out of that view. Author email is resolved via a left join, going null once the author is deleted (the comment survives).
+- Both comment routes reuse `requireProjectAndLocaleScope` (auth + locked + project + locale scope), consistent with the translation write routes and appropriate since comments are locale-scoped. `GET` allows any role; `POST` requires `CAN_SAVE_TRANSLATIONS` — Viewers read the thread but can't post.
+- `KeyTable` stays decoupled from the comments API via a `renderComments` **render prop** (it owns only the expand/collapse toggle and the spanning row); `ProjectView` supplies the wired `CommentThread`. Same injection pattern as the `onSave`/`onClaim` handlers.
+- `createdAt` is normalized to an ISO-8601 string in the store (`new Date(...).toISOString()`) for a stable cross-boundary shape rather than leaking a driver-specific Date/string.
+- Deliberately **not** built: key-level (locale-null) comment *creation* from the UI (the schema supports it, but M2's flows — send-back and the per-translation thread — are all locale-scoped), comment editing/deletion, and `@`-mentions/notifications (M4).
+
+**Outcome:** ✅ a reviewer's send-back comment shows up in the thread endpoint, authored and persisted (`apps/server/test/comments.test.ts`'s "send-back comment appears in the thread" test drives exactly the plan's outcome), and the editor renders + appends to it. `apps/server` 146 tests / `apps/editor` 58 tests / `packages/db` 5-file migrations suite pass; `pnpm typecheck`/`pnpm lint` exit 0; `vite build` succeeds.
+
+---
+
+**M2 status:** all 11 steps complete. The full translate → review → approve loop (M2's actual DoD, "can a human do the whole loop") is in place: log in as the seeded admin → pick a project → key list with filters + keyboard nav → inline edit (plain + per-branch ICU) with save-time conflict handling → reviewer claim/approve/send-back gated by RBAC + separation-of-duties, with the auto-approve toggle flipping the flow between direct-approve and needs-review → comment threads carrying send-back rationale. Backend and editor both green; the one known red is the user's separate, uncommitted `packages/core` SDK-resilience WIP (a test-mock bug, root-caused and left untouched).
 
 ## Explicit non-goals for M2 (repeat, for emphasis)
 
