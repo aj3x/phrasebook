@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { createMigratedTestDb } from '@phrasebook/db/test-utils';
 import { PostgresStore } from '../../src/store/postgres';
-import { SaveConflictError } from '../../src/store/store';
+import { SaveConflictError, SelfApprovalError } from '../../src/store/store';
 
 async function seedDemoProject(db: Awaited<ReturnType<typeof createMigratedTestDb>>) {
   await db
@@ -510,6 +510,106 @@ describe('PostgresStore.approveTranslation', () => {
     const store = new PostgresStore(db);
 
     await expect(store.approveTranslation(DEMO_REF)).rejects.toThrow();
+
+    await db.destroy();
+  });
+});
+
+async function seedUser(
+  db: Awaited<ReturnType<typeof createMigratedTestDb>>,
+  id: string,
+  email: string,
+) {
+  await db.insertInto('user').values({ id, name: id, email }).execute();
+}
+
+describe('PostgresStore.approveTranslation separation-of-duties (H3)', () => {
+  test('rejects when the approver is the same user recorded as last_editor_id', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+    await seedUser(db, 'user-ada', 'ada@example.com');
+    await db
+      .insertInto('translations')
+      .values({
+        id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        key_id: KEY_ID,
+        locale_id: '44444444-4444-4444-4444-444444444444',
+        target_text: 'Bienvenue',
+        status: 'in_review',
+        last_editor_id: 'user-ada',
+      })
+      .execute();
+
+    const store = new PostgresStore(db);
+    await expect(store.approveTranslation(DEMO_REF, 'user-ada')).rejects.toThrow(SelfApprovalError);
+
+    await db.destroy();
+  });
+
+  test('allows a different user to approve', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+    await seedUser(db, 'user-ada', 'ada@example.com');
+    await db
+      .insertInto('translations')
+      .values({
+        id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        key_id: KEY_ID,
+        locale_id: '44444444-4444-4444-4444-444444444444',
+        target_text: 'Bienvenue',
+        status: 'in_review',
+        last_editor_id: 'user-ada',
+      })
+      .execute();
+
+    const store = new PostgresStore(db);
+    const status = await store.approveTranslation(DEMO_REF, 'user-rex');
+
+    expect(status).toBe('approved');
+
+    await db.destroy();
+  });
+
+  test('grandfathers rows with no recorded editor (seed/putTranslation) even if the approver is passed', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+    await seedDemoTranslation(db, 'in_review');
+
+    const store = new PostgresStore(db);
+    const status = await store.approveTranslation(DEMO_REF, 'user-ada');
+
+    expect(status).toBe('approved');
+
+    await db.destroy();
+  });
+
+  test('saveTranslation records the editorUserId, which subsequently blocks self-approval', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await db
+      .updateTable('projects')
+      .set({ auto_approve: false })
+      .where('id', '=', '33333333-3333-3333-3333-333333333333')
+      .execute();
+    await seedDemoKey(db);
+    await seedUser(db, 'user-ada', 'ada@example.com');
+
+    const store = new PostgresStore(db);
+    await store.saveTranslation({
+      ...DEMO_REF,
+      targetText: 'Bienvenue',
+      editorUserId: 'user-ada',
+    });
+    await store.claimTranslationForReview(DEMO_REF);
+
+    await expect(store.approveTranslation(DEMO_REF, 'user-ada')).rejects.toThrow(SelfApprovalError);
+
+    // A different reviewer can still approve.
+    const status = await store.approveTranslation(DEMO_REF, 'user-rex');
+    expect(status).toBe('approved');
 
     await db.destroy();
   });

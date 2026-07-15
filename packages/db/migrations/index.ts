@@ -10,6 +10,7 @@ import { migration0008BetterAuth } from './0008_better_auth';
 import { migration0009Rbac } from './0009_rbac';
 import { migration0010UserLocked } from './0010_user_locked';
 import { migration0011ProjectAutoApprove } from './0011_project_auto_approve';
+import { migration0012TranslationLastEditor } from './0012_translation_last_editor';
 
 export const migrations: Record<string, Migration> = {
   '0001_organizations': migration0001Organizations,
@@ -23,4 +24,5 @@ export const migrations: Record<string, Migration> = {
   '0009_rbac': migration0009Rbac,
   '0010_user_locked': migration0010UserLocked,
   '0011_project_auto_approve': migration0011ProjectAutoApprove,
+  '0012_translation_last_editor': migration0012TranslationLastEditor,
 };

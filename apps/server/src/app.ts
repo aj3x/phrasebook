@@ -3,12 +3,11 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { Kysely } from 'kysely';
 import type { Auth } from './auth';
-import { requireRole } from './middleware/require-role';
-import { hasScopedRole } from './middleware/scope';
+import { hasScopedRole, requireProjectAndLocaleScope } from './middleware/scope';
 import type { AuthContext } from './middleware/session';
 import { createSessionMiddleware } from './middleware/session';
 import { InvalidTransitionError } from './status';
-import { SaveConflictError } from './store/store';
+import { SaveConflictError, SelfApprovalError } from './store/store';
 import type { Store } from './store/store';
 
 const CAN_SAVE_TRANSLATIONS = ['Admin', 'Developer', 'Translator', 'Reviewer'];
@@ -141,9 +140,10 @@ export function createApp(store: Store, auth: Auth, db: Kysely<Database>) {
 
   app.put(
     '/v1/projects/:project/translations/:namespace/:locale/:key',
-    requireRole(db, CAN_SAVE_TRANSLATIONS),
+    requireProjectAndLocaleScope(db, store, CAN_SAVE_TRANSLATIONS),
     async (c) => {
       const { project, namespace, locale, key } = c.req.param();
+      const authContext = c.get('authContext');
       const body = await c.req.json().catch(() => ({}));
       if (typeof body.targetText !== 'string') {
         return c.json({ error: 'targetText is required' }, 400);
@@ -157,6 +157,7 @@ export function createApp(store: Store, auth: Auth, db: Kysely<Database>) {
           key,
           targetText: body.targetText,
           originalText: typeof body.originalText === 'string' ? body.originalText : undefined,
+          editorUserId: authContext?.userId,
         });
         return c.json({ status });
       } catch (err) {
@@ -170,7 +171,7 @@ export function createApp(store: Store, auth: Auth, db: Kysely<Database>) {
 
   app.post(
     '/v1/projects/:project/translations/:namespace/:locale/:key/claim',
-    requireRole(db, CAN_REVIEW_TRANSLATIONS),
+    requireProjectAndLocaleScope(db, store, CAN_REVIEW_TRANSLATIONS),
     async (c) => {
       const { project, namespace, locale, key } = c.req.param();
       try {
@@ -184,11 +185,15 @@ export function createApp(store: Store, auth: Auth, db: Kysely<Database>) {
 
   app.post(
     '/v1/projects/:project/translations/:namespace/:locale/:key/approve',
-    requireRole(db, CAN_REVIEW_TRANSLATIONS),
+    requireProjectAndLocaleScope(db, store, CAN_REVIEW_TRANSLATIONS),
     async (c) => {
       const { project, namespace, locale, key } = c.req.param();
+      const authContext = c.get('authContext');
       try {
-        const status = await store.approveTranslation({ project, namespace, locale, key });
+        const status = await store.approveTranslation(
+          { project, namespace, locale, key },
+          authContext?.userId,
+        );
         return c.json({ status });
       } catch (err) {
         return translationErrorResponse(c, err);
@@ -198,7 +203,7 @@ export function createApp(store: Store, auth: Auth, db: Kysely<Database>) {
 
   app.post(
     '/v1/projects/:project/translations/:namespace/:locale/:key/send-back',
-    requireRole(db, CAN_REVIEW_TRANSLATIONS),
+    requireProjectAndLocaleScope(db, store, CAN_REVIEW_TRANSLATIONS),
     async (c) => {
       const { project, namespace, locale, key } = c.req.param();
       const body = await c.req.json().catch(() => ({}));
@@ -230,6 +235,9 @@ export function createApp(store: Store, auth: Auth, db: Kysely<Database>) {
  */
 // biome-ignore lint/suspicious/noExplicitAny: Hono's Context generic varies per call site; only c.json is used here.
 function translationErrorResponse(c: any, err: unknown) {
+  if (err instanceof SelfApprovalError) {
+    return c.json({ error: err.message }, 403);
+  }
   if (err instanceof InvalidTransitionError) {
     return c.json({ error: err.message }, 409);
   }

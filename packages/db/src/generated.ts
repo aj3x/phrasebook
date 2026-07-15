@@ -60,6 +60,8 @@ export interface TranslationsTable {
   status: string;
   updated_at: Generated<Date>;
   version: Generated<number>;
+  /** Added by migrations/0012_translation_last_editor.ts. */
+  last_editor_id: Nullable<string>;
 }
 
 /**

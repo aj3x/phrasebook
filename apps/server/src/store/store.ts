@@ -34,6 +34,14 @@ export interface SaveTranslationInput extends TranslationRef {
    * edit.
    */
   originalText?: string;
+  /**
+   * The signed-in user producing this save, recorded on the row as
+   * `last_editor_id` so approveTranslation can enforce H3 separation
+   * of duties (a reviewer can't approve their own edit). Omitted for
+   * seed/demo writes -- those rows stay grandfathered (null editor,
+   * always approvable).
+   */
+  editorUserId?: string;
 }
 
 export interface AccessibleProject {
@@ -93,6 +101,19 @@ export class SaveConflictError extends Error {
 }
 
 /**
+ * §5 separation-of-duties (H3): under manual review (auto_approve=off),
+ * the user approving a translation must be different from the user whose
+ * save produced the current text. Distinct from InvalidTransitionError
+ * so the app can map it to 403 (policy) rather than 409 (state).
+ */
+export class SelfApprovalError extends Error {
+  constructor() {
+    super('You cannot approve a translation you edited yourself');
+    this.name = 'SelfApprovalError';
+  }
+}
+
+/**
  * The minimal M1 subset of the full §6 store interface (tms-foundations.md).
  * Read-heavy for now: getBundle serves the runtime endpoint (step 6);
  * putTranslation exists only so the seed script (step 7) has a real write
@@ -112,7 +133,13 @@ export interface Store {
   putTranslation(input: PutTranslationInput): Promise<void>;
   saveTranslation(input: SaveTranslationInput): Promise<TranslationStatus>;
   claimTranslationForReview(ref: TranslationRef): Promise<TranslationStatus>;
-  approveTranslation(ref: TranslationRef): Promise<TranslationStatus>;
+  /**
+   * `approverUserId` is compared against the translation's
+   * `last_editor_id` to enforce H3 SoD. Pass the authenticated user's
+   * id; omit only for internal call sites that legitimately bypass the
+   * check (none in M2).
+   */
+  approveTranslation(ref: TranslationRef, approverUserId?: string): Promise<TranslationStatus>;
   sendTranslationBack(ref: TranslationRef, comment: string): Promise<TranslationStatus>;
   listAccessibleProjects(scope: ProjectAccessScope): Promise<AccessibleProject[]>;
   findProjectId(project: string): Promise<string | undefined>;

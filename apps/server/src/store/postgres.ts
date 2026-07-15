@@ -19,6 +19,7 @@ import {
   type PutTranslationInput,
   SaveConflictError,
   type SaveTranslationInput,
+  SelfApprovalError,
   type Store,
   type TranslationRef,
 } from './store';
@@ -72,7 +73,7 @@ export class PostgresStore implements Store {
   private async findTranslation(keyId: string, localeId: string) {
     return this.db
       .selectFrom('translations')
-      .select(['id', 'status'])
+      .select(['id', 'status', 'last_editor_id'])
       .where('key_id', '=', keyId)
       .where('locale_id', '=', localeId)
       .executeTakeFirstOrThrow(() => new Error('No translation exists for that key/locale yet'));
@@ -91,6 +92,7 @@ export class PostgresStore implements Store {
     localeId: string,
     targetText: string,
     status: string,
+    editorUserId?: string,
   ): Promise<void> {
     await this.db
       .insertInto('translations')
@@ -100,11 +102,13 @@ export class PostgresStore implements Store {
         locale_id: localeId,
         target_text: targetText,
         status,
+        last_editor_id: editorUserId ?? null,
       })
       .onConflict((oc) =>
         oc.columns(['key_id', 'locale_id']).doUpdateSet((eb) => ({
           target_text: eb.ref('excluded.target_text'),
           status: eb.ref('excluded.status'),
+          last_editor_id: eb.ref('excluded.last_editor_id'),
           version: sql`translations.version + 1`,
           updated_at: sql`now()`,
         })),
@@ -169,24 +173,78 @@ export class PostgresStore implements Store {
 
   async saveTranslation(input: SaveTranslationInput): Promise<TranslationStatus> {
     const { autoApprove, keyId, localeId } = await this.resolveRefIds(input);
+    const status = statusAfterSave(autoApprove);
+    const editorUserId = input.editorUserId ?? null;
 
-    if (input.originalText !== undefined) {
-      const existing = await this.db
+    if (input.originalText === undefined) {
+      // Seed/demo path: no D22 conflict check requested, plain upsert.
+      await this.upsertTranslation(keyId, localeId, input.targetText, status, input.editorUserId);
+      return status;
+    }
+
+    // D22 conflict-checked path. The naive "SELECT current, compare, UPSERT"
+    // has a race: a concurrent writer can commit between the SELECT and the
+    // UPSERT, and the ON CONFLICT DO UPDATE would silently overwrite it.
+    // We close it two ways: SELECT ... FOR UPDATE locks the row for the
+    // update case, and INSERT ... ON CONFLICT DO NOTHING RETURNING detects
+    // a raced INSERT (a nonexistent row can't be locked in advance).
+    const originalText = input.originalText;
+    return this.db.transaction().execute(async (trx) => {
+      const locked = await trx
         .selectFrom('translations')
         .select('target_text')
         .where('key_id', '=', keyId)
         .where('locale_id', '=', localeId)
+        .forUpdate()
         .executeTakeFirst();
-      const currentText = existing?.target_text ?? '';
 
-      if (currentText !== input.originalText && currentText !== input.targetText) {
+      const currentText = locked?.target_text ?? '';
+      if (currentText !== originalText && currentText !== input.targetText) {
         throw new SaveConflictError(currentText);
       }
-    }
 
-    const status = statusAfterSave(autoApprove);
-    await this.upsertTranslation(keyId, localeId, input.targetText, status);
-    return status;
+      if (locked) {
+        await trx
+          .updateTable('translations')
+          .set({
+            target_text: input.targetText,
+            status,
+            last_editor_id: editorUserId,
+            version: sql`version + 1`,
+            updated_at: sql`now()`,
+          })
+          .where('key_id', '=', keyId)
+          .where('locale_id', '=', localeId)
+          .execute();
+        return status;
+      }
+
+      const inserted = await trx
+        .insertInto('translations')
+        .values({
+          id: crypto.randomUUID(),
+          key_id: keyId,
+          locale_id: localeId,
+          target_text: input.targetText,
+          status,
+          last_editor_id: editorUserId,
+        })
+        .onConflict((oc) => oc.columns(['key_id', 'locale_id']).doNothing())
+        .returning('id')
+        .executeTakeFirst();
+
+      if (!inserted) {
+        const now = await trx
+          .selectFrom('translations')
+          .select('target_text')
+          .where('key_id', '=', keyId)
+          .where('locale_id', '=', localeId)
+          .executeTakeFirst();
+        throw new SaveConflictError(now?.target_text ?? '');
+      }
+
+      return status;
+    });
   }
 
   async claimTranslationForReview(ref: TranslationRef): Promise<TranslationStatus> {
@@ -197,9 +255,21 @@ export class PostgresStore implements Store {
     return status;
   }
 
-  async approveTranslation(ref: TranslationRef): Promise<TranslationStatus> {
+  async approveTranslation(
+    ref: TranslationRef,
+    approverUserId?: string,
+  ): Promise<TranslationStatus> {
     const { keyId, localeId } = await this.resolveRefIds(ref);
     const translation = await this.findTranslation(keyId, localeId);
+    // Grandfather rows with no recorded editor (seed/putTranslation writes,
+    // rows created before the 0012 migration): those are always approvable.
+    if (
+      approverUserId !== undefined &&
+      translation.last_editor_id !== null &&
+      translation.last_editor_id === approverUserId
+    ) {
+      throw new SelfApprovalError();
+    }
     const status = approve(translation.status as TranslationStatus);
     await this.setStatus(translation.id, status);
     return status;
