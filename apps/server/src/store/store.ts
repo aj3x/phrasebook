@@ -67,6 +67,23 @@ export interface ListKeysFilter {
   status?: string;
 }
 
+/**
+ * A thread entry (§4, §11). `authorEmail` is null once the author's user
+ * row has been deleted (the comment survives, ON DELETE SET NULL).
+ * `createdAt` is an ISO-8601 string for a stable cross-boundary shape.
+ */
+export interface Comment {
+  id: string;
+  body: string;
+  authorEmail: string | null;
+  createdAt: string;
+}
+
+export interface AddCommentInput extends TranslationRef {
+  authorId: string;
+  body: string;
+}
+
 export interface KeyRow {
   key: string;
   sourceText: string;
@@ -141,7 +158,19 @@ export interface Store {
    * check (none in M2).
    */
   approveTranslation(ref: TranslationRef, approverUserId?: string): Promise<TranslationStatus>;
-  sendTranslationBack(ref: TranslationRef, comment: string): Promise<TranslationStatus>;
+  /**
+   * Persists `comment` as a locale-scoped thread entry (§11) authored by
+   * `reviewerUserId` alongside the status change; the comment is already
+   * validated non-empty by the status machine before any write. Omit the
+   * reviewer id only for internal callers with no user identity.
+   */
+  sendTranslationBack(
+    ref: TranslationRef,
+    comment: string,
+    reviewerUserId?: string,
+  ): Promise<TranslationStatus>;
+  addComment(input: AddCommentInput): Promise<Comment>;
+  listComments(ref: TranslationRef): Promise<Comment[]>;
   listAccessibleProjects(scope: ProjectAccessScope): Promise<AccessibleProject[]>;
   findProjectId(project: string): Promise<string | undefined>;
   getProjectDetail(project: string): Promise<ProjectDetail | undefined>;

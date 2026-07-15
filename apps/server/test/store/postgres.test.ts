@@ -642,6 +642,24 @@ describe('PostgresStore.sendTranslationBack', () => {
 
     await db.destroy();
   });
+
+  test('persists the send-back comment as a thread entry authored by the reviewer', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+    await seedDemoTranslation(db, 'in_review');
+    await seedUser(db, 'user-rex', 'rex@example.com');
+
+    const store = new PostgresStore(db);
+    await store.sendTranslationBack(DEMO_REF, 'Please fix the tone here.', 'user-rex');
+
+    const comments = await store.listComments(DEMO_REF);
+    expect(comments).toHaveLength(1);
+    expect(comments[0]?.body).toBe('Please fix the tone here.');
+    expect(comments[0]?.authorEmail).toBe('rex@example.com');
+
+    await db.destroy();
+  });
 });
 
 const OTHER_PROJECT_ID = '99999999-9999-9999-9999-999999999999';
@@ -952,6 +970,122 @@ describe('PostgresStore.listKeys', () => {
 
     await expect(
       store.listKeys({ project: 'demo', namespace: 'no-such-namespace', locale: 'fr' }),
+    ).rejects.toThrow();
+
+    await db.destroy();
+  });
+});
+
+describe('PostgresStore.addComment / listComments', () => {
+  test('adds a locale-scoped comment and lists it with its author email', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+    await seedUser(db, 'user-ada', 'ada@example.com');
+
+    const store = new PostgresStore(db);
+    const created = await store.addComment({
+      ...DEMO_REF,
+      authorId: 'user-ada',
+      body: 'Should this be formal or informal?',
+    });
+
+    expect(created.body).toBe('Should this be formal or informal?');
+    expect(created.authorEmail).toBe('ada@example.com');
+
+    const comments = await store.listComments(DEMO_REF);
+    expect(comments.map((c) => c.body)).toEqual(['Should this be formal or informal?']);
+
+    await db.destroy();
+  });
+
+  test('lists key-level (locale-null) and this-locale comments, excluding other locales', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+    await seedUser(db, 'user-ada', 'ada@example.com');
+    // A second locale on the same project.
+    await db
+      .insertInto('locales')
+      .values({
+        id: '55555555-5555-5555-5555-555555555555',
+        project_id: '33333333-3333-3333-3333-333333333333',
+        code: 'de',
+      })
+      .execute();
+
+    // Key-level comment (no locale).
+    await db
+      .insertInto('comments')
+      .values({
+        id: '10000000-0000-0000-0000-000000000000',
+        key_id: KEY_ID,
+        author_id: 'user-ada',
+        body: 'key-level note',
+      })
+      .execute();
+    // fr comment.
+    await db
+      .insertInto('comments')
+      .values({
+        id: '20000000-0000-0000-0000-000000000000',
+        key_id: KEY_ID,
+        locale_id: '44444444-4444-4444-4444-444444444444',
+        author_id: 'user-ada',
+        body: 'fr note',
+      })
+      .execute();
+    // de comment -- must not appear when listing fr.
+    await db
+      .insertInto('comments')
+      .values({
+        id: '30000000-0000-0000-0000-000000000000',
+        key_id: KEY_ID,
+        locale_id: '55555555-5555-5555-5555-555555555555',
+        author_id: 'user-ada',
+        body: 'de note',
+      })
+      .execute();
+
+    const store = new PostgresStore(db);
+    const comments = await store.listComments(DEMO_REF);
+    const bodies = comments.map((c) => c.body);
+
+    expect(bodies).toContain('key-level note');
+    expect(bodies).toContain('fr note');
+    expect(bodies).not.toContain('de note');
+
+    await db.destroy();
+  });
+
+  test('a comment survives its author being deleted, showing a null author', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+    await seedUser(db, 'user-ada', 'ada@example.com');
+
+    const store = new PostgresStore(db);
+    await store.addComment({ ...DEMO_REF, authorId: 'user-ada', body: 'a note' });
+
+    await db.deleteFrom('user').where('id', '=', 'user-ada').execute();
+
+    const comments = await store.listComments(DEMO_REF);
+    expect(comments).toHaveLength(1);
+    expect(comments[0]?.authorEmail).toBeNull();
+
+    await db.destroy();
+  });
+
+  test('throws for an unknown key', async () => {
+    const db = await createMigratedTestDb();
+    await seedDemoProject(db);
+    await seedDemoKey(db);
+    await seedUser(db, 'user-ada', 'ada@example.com');
+
+    const store = new PostgresStore(db);
+
+    await expect(
+      store.addComment({ ...DEMO_REF, key: 'no.such.key', authorId: 'user-ada', body: 'x' }),
     ).rejects.toThrow();
 
     await db.destroy();

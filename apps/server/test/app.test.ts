@@ -5,7 +5,9 @@ import { createAuth } from '../src/auth';
 import type { TranslationStatus } from '../src/status';
 import type {
   AccessibleProject,
+  AddCommentInput,
   BundleResult,
+  Comment,
   KeyRow,
   ListKeysFilter,
   ListKeysRef,
@@ -44,7 +46,19 @@ class FakeStore implements Store {
     throw new Error('not used in these tests');
   }
 
-  async sendTranslationBack(_ref: TranslationRef, _comment: string): Promise<TranslationStatus> {
+  async sendTranslationBack(
+    _ref: TranslationRef,
+    _comment: string,
+    _reviewerUserId?: string,
+  ): Promise<TranslationStatus> {
+    throw new Error('not used in these tests');
+  }
+
+  async addComment(_input: AddCommentInput): Promise<Comment> {
+    throw new Error('not used in these tests');
+  }
+
+  async listComments(_ref: TranslationRef): Promise<Comment[]> {
     throw new Error('not used in these tests');
   }
 

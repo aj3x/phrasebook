@@ -10,7 +10,9 @@ import {
 } from '../status';
 import {
   type AccessibleProject,
+  type AddCommentInput,
   type BundleResult,
+  type Comment,
   type KeyRow,
   type ListKeysFilter,
   type ListKeysRef,
@@ -275,12 +277,80 @@ export class PostgresStore implements Store {
     return status;
   }
 
-  async sendTranslationBack(ref: TranslationRef, comment: string): Promise<TranslationStatus> {
+  async sendTranslationBack(
+    ref: TranslationRef,
+    comment: string,
+    reviewerUserId?: string,
+  ): Promise<TranslationStatus> {
     const { keyId, localeId } = await this.resolveRefIds(ref);
     const translation = await this.findTranslation(keyId, localeId);
+    // sendBack() validates the comment is non-empty and throws before any
+    // write, so an empty comment never reaches the inserts below.
     const status = sendBack(translation.status as TranslationStatus, comment);
     await this.setStatus(translation.id, status);
+    await this.insertComment(keyId, localeId, reviewerUserId ?? null, comment);
     return status;
+  }
+
+  private async insertComment(
+    keyId: string,
+    localeId: string | null,
+    authorId: string | null,
+    body: string,
+  ): Promise<string> {
+    const id = crypto.randomUUID();
+    await this.db
+      .insertInto('comments')
+      .values({ id, key_id: keyId, locale_id: localeId, author_id: authorId, body })
+      .execute();
+    return id;
+  }
+
+  private commentQuery() {
+    return this.db
+      .selectFrom('comments')
+      .leftJoin('user', 'user.id', 'comments.author_id')
+      .select([
+        'comments.id as id',
+        'comments.body as body',
+        'user.email as authorEmail',
+        'comments.created_at as createdAt',
+      ]);
+  }
+
+  private static toComment(row: {
+    id: string;
+    body: string;
+    authorEmail: string | null;
+    createdAt: unknown;
+  }): Comment {
+    return {
+      id: row.id,
+      body: row.body,
+      authorEmail: row.authorEmail ?? null,
+      createdAt: new Date(row.createdAt as string | Date).toISOString(),
+    };
+  }
+
+  async addComment(input: AddCommentInput): Promise<Comment> {
+    const { keyId, localeId } = await this.resolveRefIds(input);
+    const id = await this.insertComment(keyId, localeId, input.authorId, input.body);
+    const row = await this.commentQuery().where('comments.id', '=', id).executeTakeFirstOrThrow();
+    return PostgresStore.toComment(row);
+  }
+
+  async listComments(ref: TranslationRef): Promise<Comment[]> {
+    const { keyId, localeId } = await this.resolveRefIds(ref);
+    const rows = await this.commentQuery()
+      .where('comments.key_id', '=', keyId)
+      // Key-level (locale_id NULL) comments plus this locale's -- other
+      // locales' translation-scoped threads stay out of this view.
+      .where((eb) =>
+        eb.or([eb('comments.locale_id', 'is', null), eb('comments.locale_id', '=', localeId)]),
+      )
+      .orderBy('comments.created_at', 'asc')
+      .execute();
+    return rows.map((row) => PostgresStore.toComment(row));
   }
 
   async listAccessibleProjects(scope: ProjectAccessScope): Promise<AccessibleProject[]> {
