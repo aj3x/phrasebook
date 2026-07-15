@@ -12,7 +12,13 @@ function renderWithQueryClient(ui: React.ReactElement) {
   return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
 }
 
-const DETAIL = { name: 'demo', sourceLocale: 'en', locales: ['fr', 'es'], namespaces: ['common'] };
+const DETAIL = {
+  name: 'demo',
+  sourceLocale: 'en',
+  locales: ['fr', 'es'],
+  namespaces: ['common'],
+  autoApprove: true,
+};
 const KEYS = [
   { key: 'home.hero.title', sourceText: 'Welcome', targetText: 'Bienvenue', status: 'approved' },
 ];
@@ -149,5 +155,85 @@ describe('ProjectView', () => {
     fireEvent.click(screen.getByRole('button', { name: /projects/i }));
 
     expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  test('toggling auto-approve PATCHes the settings endpoint with the new value', async () => {
+    const calls: { url: string; method: string; body: unknown }[] = [];
+    const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      const method = init?.method ?? 'GET';
+      const body = init?.body ? JSON.parse(init.body as string) : undefined;
+      calls.push({ url, method, body });
+      if (method === 'PATCH') return jsonResponse(body);
+      if (url.includes('/keys')) return jsonResponse({ keys: KEYS });
+      return jsonResponse(DETAIL);
+    };
+
+    renderWithQueryClient(
+      <ProjectView
+        endpoint="https://api.example.com"
+        project="demo"
+        onBack={() => {}}
+        fetchImpl={fetchImpl}
+      />,
+    );
+
+    const checkbox = await screen.findByLabelText(/auto-approve/i);
+    expect(checkbox).toHaveProperty('checked', true);
+
+    fireEvent.click(checkbox);
+
+    await waitFor(() => {
+      const patch = calls.find((c) => c.method === 'PATCH');
+      expect(patch).toBeDefined();
+      expect(patch?.url).toContain('/v1/projects/demo/settings');
+      expect(patch?.body).toEqual({ autoApprove: false });
+    });
+    // Optimistically reflects the new state.
+    expect(checkbox).toHaveProperty('checked', false);
+  });
+
+  test('claiming a row POSTs to the claim endpoint', async () => {
+    const calls: { url: string; method: string }[] = [];
+    const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      const method = init?.method ?? 'GET';
+      calls.push({ url, method });
+      if (url.endsWith('/claim')) return jsonResponse({ status: 'in_review' });
+      if (url.includes('/keys')) {
+        return jsonResponse({
+          keys: [
+            {
+              key: 'home.hero.title',
+              sourceText: 'Welcome',
+              targetText: '',
+              status: 'needs_review',
+            },
+          ],
+        });
+      }
+      return jsonResponse(DETAIL);
+    };
+
+    renderWithQueryClient(
+      <ProjectView
+        endpoint="https://api.example.com"
+        project="demo"
+        onBack={() => {}}
+        fetchImpl={fetchImpl}
+      />,
+    );
+
+    await waitFor(() => screen.getByText('home.hero.title'));
+    fireEvent.click(screen.getByRole('button', { name: /claim/i }));
+
+    await waitFor(() => {
+      const claim = calls.find((c) => c.url.endsWith('/claim'));
+      expect(claim).toBeDefined();
+      expect(claim?.url).toContain(
+        '/v1/projects/demo/translations/common/fr/home.hero.title/claim',
+      );
+      expect(claim?.method).toBe('POST');
+    });
   });
 });

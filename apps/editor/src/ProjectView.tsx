@@ -1,7 +1,17 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useId, useState } from 'react';
 import { KeyTable } from './KeyTable';
-import { type FetchImpl, fetchKeys, fetchProjectDetail, saveTranslation } from './api';
+import {
+  type FetchImpl,
+  type ProjectDetail,
+  approveTranslation,
+  claimTranslation,
+  fetchKeys,
+  fetchProjectDetail,
+  saveTranslation,
+  sendBackTranslation,
+  setAutoApprove,
+} from './api';
 
 const STATUS_FILTER_OPTIONS = [
   'untranslated',
@@ -25,14 +35,16 @@ export function ProjectView({ endpoint, project, onBack, fetchImpl }: ProjectVie
   const namespaceId = useId();
   const localeId = useId();
   const statusId = useId();
+  const autoApproveId = useId();
   const queryClient = useQueryClient();
+  const detailQueryKey = ['project-detail', endpoint, project];
 
   const [namespace, setNamespace] = useState<string | undefined>(undefined);
   const [locale, setLocale] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState('');
 
   const detailQuery = useQuery({
-    queryKey: ['project-detail', endpoint, project],
+    queryKey: detailQueryKey,
     queryFn: () => fetchProjectDetail(endpoint, project, fetchImpl),
   });
   const detail = detailQuery.data;
@@ -75,6 +87,67 @@ export function ProjectView({ endpoint, project, onBack, fetchImpl }: ProjectVie
     return outcome;
   }
 
+  async function handleClaim(key: string) {
+    const outcome = await claimTranslation(
+      endpoint,
+      project,
+      effectiveNamespace as string,
+      effectiveLocale as string,
+      key,
+      fetchImpl,
+    );
+    if (outcome.kind === 'success') {
+      queryClient.invalidateQueries({ queryKey: keysQueryKey });
+    }
+    return outcome;
+  }
+
+  async function handleApprove(key: string) {
+    const outcome = await approveTranslation(
+      endpoint,
+      project,
+      effectiveNamespace as string,
+      effectiveLocale as string,
+      key,
+      fetchImpl,
+    );
+    if (outcome.kind === 'success') {
+      queryClient.invalidateQueries({ queryKey: keysQueryKey });
+    }
+    return outcome;
+  }
+
+  async function handleSendBack(key: string, comment: string) {
+    const outcome = await sendBackTranslation(
+      endpoint,
+      project,
+      effectiveNamespace as string,
+      effectiveLocale as string,
+      key,
+      comment,
+      fetchImpl,
+    );
+    if (outcome.kind === 'success') {
+      queryClient.invalidateQueries({ queryKey: keysQueryKey });
+    }
+    return outcome;
+  }
+
+  // Optimistic so the checkbox reflects the click immediately; reverts if
+  // the server rejects it (e.g. lost the project-manager role mid-session).
+  async function handleToggleAutoApprove(next: boolean) {
+    queryClient.setQueryData<ProjectDetail>(detailQueryKey, (old) =>
+      old ? { ...old, autoApprove: next } : old,
+    );
+    try {
+      await setAutoApprove(endpoint, project, next, fetchImpl);
+    } catch {
+      queryClient.setQueryData<ProjectDetail>(detailQueryKey, (old) =>
+        old ? { ...old, autoApprove: !next } : old,
+      );
+    }
+  }
+
   return (
     <main>
       <button type="button" onClick={onBack}>
@@ -87,6 +160,16 @@ export function ProjectView({ endpoint, project, onBack, fetchImpl }: ProjectVie
 
       {detail && (
         <>
+          <label htmlFor={autoApproveId}>
+            <input
+              id={autoApproveId}
+              type="checkbox"
+              checked={detail.autoApprove}
+              onChange={(e) => handleToggleAutoApprove(e.target.checked)}
+            />
+            Auto-approve translator saves
+          </label>
+
           <label htmlFor={namespaceId}>
             Namespace
             <select
@@ -137,6 +220,9 @@ export function ProjectView({ endpoint, project, onBack, fetchImpl }: ProjectVie
               rows={keysQuery.data}
               locale={effectiveLocale as string}
               onSave={handleSave}
+              onClaim={handleClaim}
+              onApprove={handleApprove}
+              onSendBack={handleSendBack}
             />
           )}
         </>

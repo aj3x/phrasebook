@@ -29,6 +29,7 @@ async function routingFetchImpl(input: RequestInfo | URL) {
       sourceLocale: 'en',
       locales: ['fr'],
       namespaces: ['common'],
+      autoApprove: true,
     });
   }
   return jsonResponse({ projects: [{ name: 'demo', sourceLocale: 'en' }] });

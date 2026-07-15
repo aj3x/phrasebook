@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
-import { KeyTable } from '../src/KeyTable';
-import type { KeyRow, SaveOutcome } from '../src/api';
+import { KeyTable, type KeyTableProps } from '../src/KeyTable';
+import type { KeyRow, ReviewOutcome, SaveOutcome } from '../src/api';
 
 const rows: KeyRow[] = [
   { key: 'a.b', sourceText: 'A', targetText: 'A-fr', status: 'approved' },
@@ -328,6 +328,151 @@ describe('KeyTable', () => {
       fireEvent.doubleClick(screen.getByText('A-fr'));
 
       expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    });
+  });
+
+  describe('reviewer actions', () => {
+    const reviewRows: KeyRow[] = [
+      { key: 'k.needs', sourceText: 'S1', targetText: 'T1', status: 'needs_review' },
+      { key: 'k.inreview', sourceText: 'S2', targetText: 'T2', status: 'in_review' },
+      { key: 'k.approved', sourceText: 'S3', targetText: 'T3', status: 'approved' },
+    ];
+
+    function rowFor(keyText: string): HTMLElement {
+      const row = screen.getByText(keyText).closest('tr');
+      if (!row) throw new Error(`no row for "${keyText}"`);
+      return row as HTMLElement;
+    }
+
+    // ProjectView always wires all three handlers; these defaults mirror
+    // that so a test overrides only the one it's asserting.
+    const okClaim = async (): Promise<ReviewOutcome> => ({ kind: 'success', status: 'in_review' });
+    const okApprove = async (): Promise<ReviewOutcome> => ({ kind: 'success', status: 'approved' });
+    const okSendBack = async (): Promise<ReviewOutcome> => ({
+      kind: 'success',
+      status: 'needs_review',
+    });
+
+    function renderReview(
+      handlers: {
+        onClaim?: KeyTableProps['onClaim'];
+        onApprove?: KeyTableProps['onApprove'];
+        onSendBack?: KeyTableProps['onSendBack'];
+      } = {},
+    ) {
+      return render(
+        <KeyTable
+          rows={reviewRows}
+          onSave={neverUsedOnSave}
+          locale="fr"
+          onClaim={handlers.onClaim ?? okClaim}
+          onApprove={handlers.onApprove ?? okApprove}
+          onSendBack={handlers.onSendBack ?? okSendBack}
+        />,
+      );
+    }
+
+    test('shows a Claim action only for needs_review rows', () => {
+      renderReview();
+
+      expect(within(rowFor('k.needs')).queryByRole('button', { name: /claim/i })).not.toBeNull();
+      expect(within(rowFor('k.inreview')).queryByRole('button', { name: /claim/i })).toBeNull();
+      expect(within(rowFor('k.approved')).queryByRole('button', { name: /claim/i })).toBeNull();
+    });
+
+    test('shows Approve and Send back actions only for in_review rows', () => {
+      renderReview();
+
+      const inReview = within(rowFor('k.inreview'));
+      expect(inReview.queryByRole('button', { name: /approve/i })).not.toBeNull();
+      expect(inReview.queryByRole('button', { name: /send back/i })).not.toBeNull();
+
+      expect(within(rowFor('k.needs')).queryByRole('button', { name: /approve/i })).toBeNull();
+      expect(within(rowFor('k.approved')).queryByRole('button', { name: /approve/i })).toBeNull();
+    });
+
+    test('claiming calls onClaim and moves the row to in_review', async () => {
+      const onClaim = vi.fn(
+        async (): Promise<ReviewOutcome> => ({ kind: 'success', status: 'in_review' }),
+      );
+      renderReview({ onClaim });
+
+      fireEvent.click(within(rowFor('k.needs')).getByRole('button', { name: /claim/i }));
+
+      expect(onClaim).toHaveBeenCalledWith('k.needs');
+      await waitFor(() => {
+        // Now in_review, so the claim button is gone and approve/send-back appear.
+        expect(within(rowFor('k.needs')).queryByRole('button', { name: /claim/i })).toBeNull();
+        within(rowFor('k.needs')).getByRole('button', { name: /approve/i });
+      });
+    });
+
+    test('approving calls onApprove and moves the row to approved', async () => {
+      const onApprove = vi.fn(
+        async (): Promise<ReviewOutcome> => ({ kind: 'success', status: 'approved' }),
+      );
+      renderReview({ onApprove });
+
+      fireEvent.click(within(rowFor('k.inreview')).getByRole('button', { name: /approve/i }));
+
+      expect(onApprove).toHaveBeenCalledWith('k.inreview');
+      await waitFor(() => {
+        expect(within(rowFor('k.inreview')).queryByRole('button', { name: /approve/i })).toBeNull();
+      });
+    });
+
+    test('send-back requires a non-empty comment before it can be confirmed', () => {
+      renderReview();
+
+      fireEvent.click(within(rowFor('k.inreview')).getByRole('button', { name: /send back/i }));
+
+      const confirm = within(rowFor('k.inreview')).getByRole('button', {
+        name: /confirm send-back/i,
+      });
+      expect(confirm).toHaveProperty('disabled', true);
+
+      fireEvent.change(within(rowFor('k.inreview')).getByLabelText(/comment/i), {
+        target: { value: 'please fix the tone' },
+      });
+      expect(confirm).toHaveProperty('disabled', false);
+    });
+
+    test('confirming send-back calls onSendBack with the comment and moves the row to needs_review', async () => {
+      const onSendBack = vi.fn(
+        async (): Promise<ReviewOutcome> => ({ kind: 'success', status: 'needs_review' }),
+      );
+      renderReview({ onSendBack });
+
+      fireEvent.click(within(rowFor('k.inreview')).getByRole('button', { name: /send back/i }));
+      fireEvent.change(within(rowFor('k.inreview')).getByLabelText(/comment/i), {
+        target: { value: 'please fix the tone' },
+      });
+      fireEvent.click(
+        within(rowFor('k.inreview')).getByRole('button', { name: /confirm send-back/i }),
+      );
+
+      expect(onSendBack).toHaveBeenCalledWith('k.inreview', 'please fix the tone');
+      await waitFor(() => {
+        within(rowFor('k.inreview')).getByRole('button', { name: /claim/i });
+      });
+    });
+
+    test('a rejected approve (self-approval SoD) shows the error and leaves the row in_review', async () => {
+      const onApprove = vi.fn(
+        async (): Promise<ReviewOutcome> => ({
+          kind: 'error',
+          message: 'You cannot approve a translation you edited yourself',
+        }),
+      );
+      renderReview({ onApprove });
+
+      fireEvent.click(within(rowFor('k.inreview')).getByRole('button', { name: /approve/i }));
+
+      await waitFor(() => {
+        within(rowFor('k.inreview')).getByText(/cannot approve a translation you edited/i);
+      });
+      // Still in_review: approve button is still there.
+      within(rowFor('k.inreview')).getByRole('button', { name: /approve/i });
     });
   });
 });

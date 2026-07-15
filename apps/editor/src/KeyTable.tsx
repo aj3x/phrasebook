@@ -5,7 +5,7 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
-import type { KeyRow, SaveOutcome } from './api';
+import type { KeyRow, ReviewOutcome, SaveOutcome } from './api';
 import { type PluralEditState, computePluralEditState, reassemblePluralEdit } from './icuEditing';
 
 const TARGET_COLUMN_INDEX = 2;
@@ -83,6 +83,13 @@ export interface KeyTableProps {
   rows: KeyRow[];
   locale: string;
   onSave: (key: string, originalText: string, targetText: string) => Promise<SaveOutcome>;
+  // Reviewer actions (M2 step 10) -- optional so a caller that only wants
+  // the read+edit surface doesn't have to pass no-op handlers; a row's
+  // action only appears when both its status calls for it AND the handler
+  // exists.
+  onClaim?: (key: string) => Promise<ReviewOutcome>;
+  onApprove?: (key: string) => Promise<ReviewOutcome>;
+  onSendBack?: (key: string, comment: string) => Promise<ReviewOutcome>;
 }
 
 /**
@@ -103,16 +110,22 @@ export interface KeyTableProps {
  * (packages/icu) before calling onSave, so the save endpoint itself
  * never needs to know per-branch editing happened.
  */
-export function KeyTable({ rows, locale, onSave }: KeyTableProps) {
+export function KeyTable({ rows, locale, onSave, onClaim, onApprove, onSendBack }: KeyTableProps) {
   const [active, setActive] = useState({ row: 0, col: 0 });
   const [editing, setEditing] = useState<EditingState | null>(null);
   // Optimistic display state, keyed by key name: the parent's `rows` prop
   // only reflects reality after its own query refetches, which lags
   // behind a save's response -- this is what makes a just-saved cell show
-  // the new text and reconciled status immediately.
-  const [overrides, setOverrides] = useState<Record<string, Pick<KeyRow, 'targetText' | 'status'>>>(
-    {},
-  );
+  // the new text and reconciled status immediately. A review action only
+  // overrides `status`, so both fields are partial.
+  const [overrides, setOverrides] = useState<
+    Record<string, Partial<Pick<KeyRow, 'targetText' | 'status'>>>
+  >({});
+  // Per-key transient state for reviewer actions -- unlike edits, review
+  // actions don't need optimistic status (they're a single quick request),
+  // so a busy flag + a reconciled-or-error result is enough.
+  const [reviewBusy, setReviewBusy] = useState<Record<string, boolean>>({});
+  const [reviewErrors, setReviewErrors] = useState<Record<string, string>>({});
   const cellRefs = useRef(new Map<string, HTMLTableCellElement>());
 
   const displayRows = rows.map((row) =>
@@ -183,6 +196,20 @@ export function KeyTable({ rows, locale, onSave }: KeyTableProps) {
     }
   }
 
+  async function runReview(key: string, run: () => Promise<ReviewOutcome>) {
+    setReviewErrors((prev) => omitKey(prev, key));
+    setReviewBusy((prev) => ({ ...prev, [key]: true }));
+
+    const outcome = await run();
+
+    setReviewBusy((prev) => omitKey(prev, key));
+    if (outcome.kind === 'success') {
+      setOverrides((prev) => ({ ...prev, [key]: { ...prev[key], status: outcome.status } }));
+    } else {
+      setReviewErrors((prev) => ({ ...prev, [key]: outcome.message }));
+    }
+  }
+
   function handleTableKeyDown(e: KeyboardEvent<HTMLTableElement>) {
     if (editing) return;
     switch (e.key) {
@@ -228,53 +255,145 @@ export function KeyTable({ rows, locale, onSave }: KeyTableProps) {
                 {flexRender(header.column.columnDef.header, header.getContext())}
               </th>
             ))}
+            <th>Actions</th>
           </tr>
         ))}
       </thead>
       <tbody>
-        {tableRows.map((row, rowIndex) => (
-          <tr key={row.id}>
-            {row.getVisibleCells().map((cell, colIndex) => {
-              const isActive = active.row === rowIndex && active.col === colIndex;
-              const isEditingThisCell =
-                colIndex === TARGET_COLUMN_INDEX && editing?.rowIndex === rowIndex;
+        {tableRows.map((row, rowIndex) => {
+          const rowKey = row.original.key;
+          return (
+            <tr key={row.id}>
+              {row.getVisibleCells().map((cell, colIndex) => {
+                const isActive = active.row === rowIndex && active.col === colIndex;
+                const isEditingThisCell =
+                  colIndex === TARGET_COLUMN_INDEX && editing?.rowIndex === rowIndex;
 
-              return (
-                <td
-                  key={cell.id}
-                  ref={(el) => {
-                    if (el) {
-                      cellRefs.current.set(`${rowIndex}-${colIndex}`, el);
-                    } else {
-                      cellRefs.current.delete(`${rowIndex}-${colIndex}`);
-                    }
-                  }}
-                  tabIndex={isActive ? 0 : -1}
-                  onFocus={() => {
-                    if (!editing) setActive({ row: rowIndex, col: colIndex });
-                  }}
-                  onDoubleClick={() => {
-                    if (colIndex === TARGET_COLUMN_INDEX && !editing) {
-                      startEditing(rowIndex, row.original);
-                    }
-                  }}
-                >
-                  {isEditingThisCell && editing ? (
-                    <TargetCellEditor
-                      state={editing}
-                      onCommit={commit}
-                      onCancel={() => setEditing(null)}
-                    />
-                  ) : (
-                    flexRender(cell.column.columnDef.cell, cell.getContext())
-                  )}
-                </td>
-              );
-            })}
-          </tr>
-        ))}
+                return (
+                  <td
+                    key={cell.id}
+                    ref={(el) => {
+                      if (el) {
+                        cellRefs.current.set(`${rowIndex}-${colIndex}`, el);
+                      } else {
+                        cellRefs.current.delete(`${rowIndex}-${colIndex}`);
+                      }
+                    }}
+                    tabIndex={isActive ? 0 : -1}
+                    onFocus={() => {
+                      if (!editing) setActive({ row: rowIndex, col: colIndex });
+                    }}
+                    onDoubleClick={() => {
+                      if (colIndex === TARGET_COLUMN_INDEX && !editing) {
+                        startEditing(rowIndex, row.original);
+                      }
+                    }}
+                  >
+                    {isEditingThisCell && editing ? (
+                      <TargetCellEditor
+                        state={editing}
+                        onCommit={commit}
+                        onCancel={() => setEditing(null)}
+                      />
+                    ) : (
+                      flexRender(cell.column.columnDef.cell, cell.getContext())
+                    )}
+                  </td>
+                );
+              })}
+              <td>
+                <RowActions
+                  status={row.original.status}
+                  busy={reviewBusy[rowKey] ?? false}
+                  error={reviewErrors[rowKey]}
+                  onClaim={onClaim ? () => runReview(rowKey, () => onClaim(rowKey)) : undefined}
+                  onApprove={
+                    onApprove ? () => runReview(rowKey, () => onApprove(rowKey)) : undefined
+                  }
+                  onSendBack={
+                    onSendBack
+                      ? (comment) => runReview(rowKey, () => onSendBack(rowKey, comment))
+                      : undefined
+                  }
+                />
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
+  );
+}
+
+interface RowActionsProps {
+  status: string;
+  busy: boolean;
+  error?: string;
+  onClaim?: () => void;
+  onApprove?: () => void;
+  onSendBack?: (comment: string) => void;
+}
+
+/**
+ * Per-row reviewer controls (M2 step 10): a needs_review row can be
+ * claimed; an in_review row can be approved or sent back. Send-back
+ * requires a non-empty comment -- the confirm button stays disabled
+ * until one is typed (the server enforces this too, per §5, but the UI
+ * shouldn't let an empty one through in the first place).
+ */
+function RowActions({ status, busy, error, onClaim, onApprove, onSendBack }: RowActionsProps) {
+  const [sendBackOpen, setSendBackOpen] = useState(false);
+  const [comment, setComment] = useState('');
+  const commentId = useId();
+
+  return (
+    <div>
+      {status === 'needs_review' && onClaim && (
+        <button type="button" disabled={busy} onClick={onClaim}>
+          Claim
+        </button>
+      )}
+
+      {status === 'in_review' && !sendBackOpen && (
+        <>
+          {onApprove && (
+            <button type="button" disabled={busy} onClick={onApprove}>
+              Approve
+            </button>
+          )}
+          {onSendBack && (
+            <button type="button" disabled={busy} onClick={() => setSendBackOpen(true)}>
+              Send back
+            </button>
+          )}
+        </>
+      )}
+
+      {status === 'in_review' && sendBackOpen && onSendBack && (
+        <div>
+          <label htmlFor={commentId}>Comment</label>
+          <input id={commentId} value={comment} onChange={(e) => setComment(e.target.value)} />
+          <button
+            type="button"
+            disabled={busy || comment.trim() === ''}
+            onClick={() => onSendBack(comment)}
+          >
+            Confirm send-back
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSendBackOpen(false);
+              setComment('');
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {error && <p role="alert">{error}</p>}
+    </div>
   );
 }
 

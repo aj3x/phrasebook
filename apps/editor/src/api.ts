@@ -8,6 +8,7 @@ export interface ProjectDetail {
   sourceLocale: string;
   locales: string[];
   namespaces: string[];
+  autoApprove: boolean;
 }
 
 export interface KeyRow {
@@ -77,6 +78,18 @@ export async function fetchKeys(
   return body.keys;
 }
 
+function translationPath(project: string, namespace: string, locale: string, key: string): string {
+  return [
+    'v1',
+    'projects',
+    encodeURIComponent(project),
+    'translations',
+    encodeURIComponent(namespace),
+    encodeURIComponent(locale),
+    encodeURIComponent(key),
+  ].join('/');
+}
+
 export type SaveOutcome =
   | { kind: 'success'; status: string }
   | { kind: 'conflict'; currentText: string }
@@ -98,15 +111,7 @@ export async function saveTranslation(
   originalText: string,
   fetchImpl: FetchImpl = fetch,
 ): Promise<SaveOutcome> {
-  const path = [
-    'v1',
-    'projects',
-    encodeURIComponent(project),
-    'translations',
-    encodeURIComponent(namespace),
-    encodeURIComponent(locale),
-    encodeURIComponent(key),
-  ].join('/');
+  const path = translationPath(project, namespace, locale, key);
 
   const res = await fetchImpl(`${endpoint}/${path}`, {
     method: 'PUT',
@@ -123,4 +128,107 @@ export async function saveTranslation(
     return { kind: 'conflict', currentText: body.currentText };
   }
   return { kind: 'error', message: body.error ?? `Save failed (${res.status})` };
+}
+
+/**
+ * Result of a review action (claim / approve / send-back). Never throws --
+ * a self-approval rejection (H3 SoD, 403) or an invalid transition (409)
+ * is a routine outcome to show the reviewer, not an exception. The server
+ * owns the human-readable message (e.g. "You cannot approve a translation
+ * you edited yourself"), so we just surface it.
+ */
+export type ReviewOutcome =
+  | { kind: 'success'; status: string }
+  | { kind: 'error'; message: string };
+
+async function postReviewAction(
+  endpoint: string,
+  path: string,
+  action: string,
+  body: unknown,
+  fetchImpl: FetchImpl,
+): Promise<ReviewOutcome> {
+  const res = await fetchImpl(`${endpoint}/${path}/${action}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  });
+  const payload = await res.json().catch(() => ({}));
+
+  if (res.ok) {
+    return { kind: 'success', status: payload.status };
+  }
+  return { kind: 'error', message: payload.error ?? `Request failed (${res.status})` };
+}
+
+export function claimTranslation(
+  endpoint: string,
+  project: string,
+  namespace: string,
+  locale: string,
+  key: string,
+  fetchImpl: FetchImpl = fetch,
+): Promise<ReviewOutcome> {
+  return postReviewAction(
+    endpoint,
+    translationPath(project, namespace, locale, key),
+    'claim',
+    {},
+    fetchImpl,
+  );
+}
+
+export function approveTranslation(
+  endpoint: string,
+  project: string,
+  namespace: string,
+  locale: string,
+  key: string,
+  fetchImpl: FetchImpl = fetch,
+): Promise<ReviewOutcome> {
+  return postReviewAction(
+    endpoint,
+    translationPath(project, namespace, locale, key),
+    'approve',
+    {},
+    fetchImpl,
+  );
+}
+
+export function sendBackTranslation(
+  endpoint: string,
+  project: string,
+  namespace: string,
+  locale: string,
+  key: string,
+  comment: string,
+  fetchImpl: FetchImpl = fetch,
+): Promise<ReviewOutcome> {
+  return postReviewAction(
+    endpoint,
+    translationPath(project, namespace, locale, key),
+    'send-back',
+    { comment },
+    fetchImpl,
+  );
+}
+
+export async function setAutoApprove(
+  endpoint: string,
+  project: string,
+  autoApprove: boolean,
+  fetchImpl: FetchImpl = fetch,
+): Promise<boolean> {
+  const res = await fetchImpl(`${endpoint}/v1/projects/${encodeURIComponent(project)}/settings`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ autoApprove }),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to update project settings (${res.status})`);
+  }
+  const body = (await res.json()) as { autoApprove: boolean };
+  return body.autoApprove;
 }
