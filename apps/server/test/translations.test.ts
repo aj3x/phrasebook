@@ -549,12 +549,7 @@ describe('approve separation-of-duties (H3)', () => {
       'ada@example.com',
       BUILT_IN_ROLE_IDS.translator,
     );
-    const rexCookie = await signUpWithRole(
-      app,
-      db,
-      'rex@example.com',
-      BUILT_IN_ROLE_IDS.reviewer,
-    );
+    const rexCookie = await signUpWithRole(app, db, 'rex@example.com', BUILT_IN_ROLE_IDS.reviewer);
 
     const saveRes = await app.request(REF_PATH, {
       method: 'PUT',
