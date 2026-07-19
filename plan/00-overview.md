@@ -20,12 +20,15 @@ A dev clones the repo, runs `docker compose up`, opens a demo React app, and see
 |---|---|---|---|
 | **M1** | **Rendering slice** | Demo React app renders a translated string + ICU plural from the server. Locale switcher works. Fallback chain works. | Small, ~1 week solo. |
 | M2 | Editor + auth | Log in, create a project + locales, add keys, edit translations in a keyboard-first workspace. Status machine visible. | Medium. |
-| M3 | CLI + JSON adapter + extraction | `tms init`, `tms push`, `tms pull`, `tms status` against a demo repo with a JSON adapter. Key extraction from source. | Medium. |
-| M4 | Review workflow + MT + notifications | Reviewer send-back, needs_update cascade, one MT provider, in-app notifications, hash-chained audit. | Medium-large. |
-| M5 | Plugins (in-process), TM/glossary/DNT, QA checks, CI action | The remaining MVP surface from §10. | Large. |
-| M6+ | Git/lite driver, CDN-push, Figma import, webhooks, community-plugin isolation, etc. | Phase 2/3 in the spec. | Ongoing. |
+| **M3** | **Permissions, Owner role + onboarding** | Host the app against an empty DB: set up the owner account (email + password), name the org, create a first project. Real permissions table (`project:view`, `project:*`) replacing role-name checks. | Medium-large. |
+| M4 | CLI + JSON adapter + extraction | `tms init`, `tms push`, `tms pull`, `tms status` against a demo repo with a JSON adapter. Key extraction from source. | Medium. |
+| M5 | Review workflow + MT + notifications | Reviewer send-back, needs_update cascade, one MT provider, in-app notifications, hash-chained audit. | Medium-large. |
+| M6 | Plugins (in-process), TM/glossary/DNT, QA checks, CI action | The remaining MVP surface from §10. | Large. |
+| M7+ | Workspace management, git/lite driver, CDN-push, Figma import, webhooks, community-plugin isolation, etc. | Phase 2/3 in the spec. | Ongoing. |
 
-Only M1 has a fully written checklist right now. M2–M6 exist as outlines in `03-later-milestones.md` and get expanded after M1 lands.
+M1 and M2 are done and fully written up. M3 has a written plan ([`03-milestone-3-onboarding.md`](03-milestone-3-onboarding.md)); M4+ exist as outlines in `03-later-milestones.md` and get expanded when their turn comes.
+
+**Note on ordering:** M3 was originally the CLI milestone. Onboarding took the slot because a fresh instance had no way in at all (everything was seed-script-only), and because the Owner role / permissions work it needs is load-bearing for everything after it. The CLI moved to M4 — outlines are attacked in whatever order makes sense, per the working agreement.
 
 ## Working agreement
 

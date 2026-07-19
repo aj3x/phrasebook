@@ -6,14 +6,18 @@ These are sketches, not commitments. Each expands into its own detailed file whe
 
 Expanded into its own detailed file: [`03-milestone-2-editor.md`](03-milestone-2-editor.md). Table lib (TanStack Table), auth library (better-auth), and session model (cookie sessions) are resolved — see that file's header and `04-open-questions.md`.
 
-## M3 — CLI + JSON Adapter + Extraction
+## M3 — Permissions, Owner Role & Onboarding
+
+Expanded into its own detailed file: [`03-milestone-3-onboarding.md`](03-milestone-3-onboarding.md). Took the slot the CLI originally held (which moved to M4): a fresh instance had no way in — org, project, and privileged user existed only via `seed.ts` — and the Owner role + `"resource:action"` permissions table it needs sits underneath everything after it.
+
+## M4 — CLI + JSON Adapter + Extraction
 
 **Outcome:** `phrasebook init/push/pull/status/rename/diff` against a demo repo. JSON (i18next-shaped) adapter. Key extraction from source using regex/AST.
 
 Rough shape:
 
 - `apps/cli` — Bun single-file compile via `bun build --compile` (validates the single-binary story).
-- API token auth (created in editor at M2).
+- API token auth. (The M2 outline assumed tokens would be created in the editor at M2; they weren't — nothing consumed them yet. The CLI is the first real consumer, so the mechanism lands here. Token scopes should reuse M3's permission grammar rather than inventing a second one.)
 - `packages/adapters/json-i18next` — first format adapter, implements the `FormatAdapter` interface (§F8 pattern, but registered in-process only at this stage).
 - Extraction: regex-based key extraction for a `t('foo.bar')` pattern; upgrade to AST later.
 - `phrasebook rename A B` as first-class (§F6); walks translations, records the rename event.
@@ -23,7 +27,7 @@ Open questions:
 - Push behavior when local + server both changed a key: 3-way merge or force flag? (D7 says 3-way — implement it here.)
 - Where the `phrasebook.config.ts` lives and its schema.
 
-## M4 — Review workflow + MT + Notifications + Audit
+## M5 — Review workflow + MT + Notifications + Audit
 
 **Outcome:** MT batch (one provider, DeepL default), review send-back, needs_update cascade, in-app notifications, hash-chained audit turned on.
 
@@ -40,7 +44,7 @@ Open questions:
 - Do we ship MT in M4 or split it into M4a? MT alone is a milestone-sized surface.
 - Which MT provider first? DeepL (best quality) vs. LibreTranslate (self-hostable, air-gap-friendly).
 
-## M5 — Plugins (in-process), TM/Glossary/DNT, QA, CI Action
+## M6 — Plugins (in-process), TM/Glossary/DNT, QA, CI Action
 
 **Outcome:** the rest of the §10 MVP list. Official plugin system (in-process), Translation Memory, Glossary + DNT flag (D19), inline QA checks, GitHub Action for PR-based string review.
 
@@ -51,7 +55,19 @@ Rough shape:
 - Inline QA runnable in both editor and CI (F6 + F11): placeholder consistency, HTML tag matching, max-length, glossary/DNT, missing translations.
 - GitHub Action wrapping the CLI's `status`/`diff`/`lint`.
 
-## M6 — Git/Lite Driver
+## M7 — Workspace Management
+
+**Outcome:** workspaces stop being implicit. M3 creates exactly one automatically and never surfaces the concept; this is where multiple workspaces per org, and moving projects between them, become real.
+
+Rough shape:
+
+- Workspace CRUD + a picker in the editor; projects gain a "move to workspace" action.
+- Workspace-level settings in the global → org → workspace → project → user hierarchy.
+- Revisit the `workspace:view`/`update` vs `create`/`delete` split (M3 left Owner holding `workspace:*` and Admin holding only `workspace:view`) — if the carve-out chafes once workspaces are real, split the resource per M3's design rule.
+
+**Already done in M3, so not repeated here:** `workspace_id` exists as a third scope dimension on `role_assignments` (nullable, NULL = all), and `workspace:create` is already an Owner-only permission. This milestone is therefore a UI/feature build, not a migration of live grant data — which was the point of carrying the column early.
+
+## M8 — Git/Lite Driver
 
 **Outcome:** deploy the same server against a git repo instead of Postgres. §11 in the spec.
 
@@ -68,7 +84,7 @@ Rough shape:
 
 This is a big milestone. Might get further split.
 
-## M7+ — Phase 2/3 Surface
+## M9+ — Phase 2/3 Surface
 
 Ordered by likely business value, not spec order:
 
@@ -86,8 +102,8 @@ Ordered by likely business value, not spec order:
 
 ## What each later milestone still needs
 
-Each of M3–M7 gets a detailed file (M2's landed: [`03-milestone-2-editor.md`](03-milestone-2-editor.md)) once its turn comes and you've told me:
+Each of M4–M8 gets a detailed file (M2's and M3's have landed: [`03-milestone-2-editor.md`](03-milestone-2-editor.md), [`03-milestone-3-onboarding.md`](03-milestone-3-onboarding.md)) once its turn comes and you've told me:
 
-1. Whether M1's shape (SDK, endpoint, DB schema, monorepo layout) needs to change before we build on it.
-2. Which of the M2–M6 outlines to attack first (they don't have to be in numeric order).
+1. Whether the current shape (SDK, endpoints, DB schema, monorepo layout) needs to change before we build on it.
+2. Which of the remaining outlines to attack first (they don't have to be in numeric order — M3 is the precedent).
 3. Any spec item you want promoted earlier than shown here.
