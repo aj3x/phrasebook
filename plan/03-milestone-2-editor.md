@@ -100,7 +100,7 @@ Same discipline as M1: each numbered item is roughly one commit, built TDD, veri
 - Split into two commits: 6a (`GET /v1/projects` + `Store.listAccessibleProjects`, backend-only, tested the same three-layer way as step 4/5) and 6b (the actual `apps/editor` scaffold).
 - `AuthClient` in `apps/editor/src/auth-client.ts` is a narrow hand-written interface covering only what `App`/`LoginScreen` actually call, not better-auth's full inferred `ReactAuthClient<Option>` type. `createAuthClient(...)`'s return value satisfies it structurally, but the narrow type is what makes the component tests possible: `test/fake-auth-client.ts` implements the same interface with a `useSyncExternalStore`-backed fake session (no real HTTP, no mocking the `better-auth` module), reacting to sign-in/sign-out exactly like the real client's internal store does.
 - `ProjectPicker`/`fetchAccessibleProjects` take an optional `fetchImpl` (same pattern `@phrasebook/core`'s `createClient` already established in M1), so tests substitute a fake fetch instead of hitting real HTTP.
-- No router added — M2's scope only needs two screens (login, project picker) for now; adding one now would be exactly the kind of premature infrastructure the working agreement warns against. Revisit once step 7+ needs URL-addressable project/key views.
+- No router added at this step — M2's scope only needs two screens (login, project picker) for now; adding one now would be exactly the kind of premature infrastructure the working agreement warns against. URL-addressable project views added in step 12.
 - `EDITOR_DEV_ORIGIN` in `apps/server/src/app.ts` no longer says "placeholder" now that `apps/editor/vite.config.ts` actually pins port 5174.
 
 **Outcome:** ✅ `pnpm --filter @phrasebook/editor dev` serves the app on port 5174; logging in with the seeded admin (`admin@phrasebook.local` / `phrasebook-dev-admin`) lands on a project picker showing every project (an instance-wide Admin grant). Verified via component tests (9 tests, Testing Library/vitest — login error/success paths, project list/empty-state/error-state, sign-out returning to login) and a `vite build` production build; this sandbox has no browser, so as an additional check beyond unit tests, ran a real end-to-end smoke test (real sign-up, real role assignment, real session cookie, real `GET /v1/projects` call against an in-process pg-mem-backed server) confirming the actual HTTP/CORS/cookie wiring the browser would exercise. Full workspace re-run: 142 tests across all 8 packages, 0 failures. `pnpm typecheck`/`pnpm lint` exit 0 from repo root.
@@ -177,9 +177,22 @@ Same discipline as M1: each numbered item is roughly one commit, built TDD, veri
 
 **Outcome:** ✅ a reviewer's send-back comment shows up in the thread endpoint, authored and persisted (`apps/server/test/comments.test.ts`'s "send-back comment appears in the thread" test drives exactly the plan's outcome), and the editor renders + appends to it. `apps/server` 146 tests / `apps/editor` 58 tests / `packages/db` 5-file migrations suite pass; `pnpm typecheck`/`pnpm lint` exit 0; `vite build` succeeds.
 
+### 12. `apps/editor` — URL-based routing (TanStack Router) ✅
+
+- [x] Replaced state-based routing (`selectedProject` state + conditional rendering) with TanStack Router (code-based, browser history). Routes: `/login`, `/projects`, `/project/$projectName`.
+- [x] Auth guard (`AuthGuard` pathless layout route): watches `authClient.useSession()`; navigates to `/login` if the session is lost. Login page redirects to `/projects` once a session is established. Index (`/`) redirects to `/login`.
+- [x] `ProjectPicker`/`ProjectView`/`LoginScreen` props unchanged — thin page wrapper components in `App.tsx` wire router navigation to the existing callbacks (`onSelectProject`, `onBack`, `onSignOut`), keeping the component tests untouched.
+- [x] Router created inside `App`'s `useState` initializer (one instance per mount); `authClient`, `endpoint`, `queryClient`, and `fetchImpl` injected via TanStack Router's typed context so tests can still pass a fake auth client.
+
+**Design notes:**
+- Auth state is reactive (`useSession()` is a React hook), not synchronously available at route load time, so auth guards are layout components using `useEffect` rather than `beforeLoad` — avoids adding a synchronous `getSession()` escape hatch to `AuthClient` just for the router.
+- `App.test.tsx`'s two synchronous test assertions updated to `async`/`findBy` since TanStack Router's initial navigation is async (microtask); the other three tests already used `waitFor` and passed unchanged.
+
+**Outcome:** ✅ navigating directly to `/project/demo` loads that project; navigating to `/projects` without a session redirects to `/login`. 58 tests pass, `pnpm typecheck`/`pnpm lint` exit 0, `vite build` succeeds.
+
 ---
 
-**M2 status:** all 11 steps complete. The full translate → review → approve loop (M2's actual DoD, "can a human do the whole loop") is in place: log in as the seeded admin → pick a project → key list with filters + keyboard nav → inline edit (plain + per-branch ICU) with save-time conflict handling → reviewer claim/approve/send-back gated by RBAC + separation-of-duties, with the auto-approve toggle flipping the flow between direct-approve and needs-review → comment threads carrying send-back rationale. Backend and editor both green; the one known red is the user's separate, uncommitted `packages/core` SDK-resilience WIP (a test-mock bug, root-caused and left untouched).
+**M2 status:** all 12 steps complete. The full translate → review → approve loop (M2's actual DoD, "can a human do the whole loop") is in place: log in as the seeded admin → pick a project → key list with filters + keyboard nav → inline edit (plain + per-branch ICU) with save-time conflict handling → reviewer claim/approve/send-back gated by RBAC + separation-of-duties, with the auto-approve toggle flipping the flow between direct-approve and needs-review → comment threads carrying send-back rationale. Backend and editor both green; the one known red is the user's separate, uncommitted `packages/core` SDK-resilience WIP (a test-mock bug, root-caused and left untouched).
 
 ## Explicit non-goals for M2 (repeat, for emphasis)
 

@@ -36,13 +36,13 @@ async function routingFetchImpl(input: RequestInfo | URL) {
 }
 
 describe('App', () => {
-  test('shows the login screen when there is no session', () => {
+  test('shows the login screen when there is no session', async () => {
     const authClient = createFakeAuthClient();
     render(
       <App authClient={authClient} endpoint="https://api.example.com" fetchImpl={fetchImpl} />,
     );
 
-    screen.getByRole('button', { name: /sign in/i });
+    await screen.findByRole('button', { name: /sign in/i });
   });
 
   test('shows the project picker after a successful sign-in', async () => {
@@ -51,7 +51,7 @@ describe('App', () => {
       <App authClient={authClient} endpoint="https://api.example.com" fetchImpl={fetchImpl} />,
     );
 
-    fireEvent.change(screen.getByLabelText(/email/i), {
+    fireEvent.change(await screen.findByLabelText(/email/i), {
       target: { value: 'admin@phrasebook.local' },
     });
     fireEvent.change(screen.getByLabelText(/password/i), {

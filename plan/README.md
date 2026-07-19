@@ -29,7 +29,7 @@ Feedback-driven build plan. **Milestone 1 is deliberately small and end-to-end**
 - **Runtime:** Bun (server + CLI). Node compat where needed.
 - **Server framework:** Hono (Bun-native, Web Fetch–shaped).
 - **DB access:** Kysely + `postgres.js` (Postgres), `bun:sqlite` (later, lite mode).
-- **Editor:** React + Vite + TanStack Query + TanStack Table (M2). Local auth via better-auth, cookie sessions.
+- **Editor:** React + Vite + TanStack Query + TanStack Table + TanStack Router (M2). Local auth via better-auth, cookie sessions.
 - **Validation:** Zod for API DTOs + shared schemas.
 - **ICU/CLDR:** `@formatjs/intl-messageformat` + `@formatjs/intl` (pinned CLDR version).
 - **Monorepo:** pnpm workspaces (Bun install compatibility flag on).
