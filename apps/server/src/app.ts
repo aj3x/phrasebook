@@ -25,12 +25,12 @@ const ANY_ROLE = ['Admin', 'Developer', 'Translator', 'Reviewer', 'Viewer'];
 // apps/editor's Vite dev server (vite.config.ts pins this explicitly so it
 // doesn't drift if some other app on 5173 changes which port Vite falls
 // back to).
-const EDITOR_DEV_ORIGIN = 'http://localhost:5174';
+const EDITOR_DEV_ORIGIN = ['http://localhost:5174'];
 
 export function createApp(store: Store, auth: Auth, db: Kysely<Database>) {
   const app = new Hono<{ Variables: { authContext: AuthContext | null } }>();
 
-  app.use('/v1/*', cors({ origin: 'http://localhost:5173' }));
+  app.use('/v1/*', cors({ origin: EDITOR_DEV_ORIGIN, credentials: true }));
 
   app.use(
     '/api/auth/*',

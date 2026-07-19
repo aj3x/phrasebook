@@ -18,10 +18,11 @@ if (!authSecret) {
 const port = Number(process.env.PORT ?? 3000);
 const hostname = process.env.BIND_ADDR ?? '127.0.0.1';
 const authBaseURL = process.env.BETTER_AUTH_URL ?? `http://localhost:${port}`;
+const origins = [process.env.ALLOWED_ORIGINS || '*'];
 
 const db = createDb(connectionString);
 const store = new PostgresStore(db);
-const auth = createAuth({ db, secret: authSecret, baseURL: authBaseURL });
+const auth = createAuth({ db, secret: authSecret, baseURL: authBaseURL, trustedOrigins: origins });
 const app = createApp(store, auth, db);
 
 Bun.serve({
