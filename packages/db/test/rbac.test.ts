@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { createMigratedTestDb } from './helpers/test-db';
 
 describe('RBAC tables', () => {
-  test('seeds the five built-in roles', async () => {
+  test('seeds the built-in roles (five here, Owner added by 0014_permissions)', async () => {
     const db = await createMigratedTestDb();
 
     const roles = await db.selectFrom('roles').selectAll().orderBy('name').execute();
@@ -10,6 +10,7 @@ describe('RBAC tables', () => {
     expect(roles.map((r) => r.name)).toEqual([
       'Admin',
       'Developer',
+      'Owner',
       'Reviewer',
       'Translator',
       'Viewer',

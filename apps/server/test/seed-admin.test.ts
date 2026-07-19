@@ -12,6 +12,7 @@ async function createTestSetup() {
     db,
     secret: 'test-secret-at-least-32-characters-long',
     baseURL: 'http://localhost:3000',
+    trustedOrigins: ['http://localhost:5173', 'http://localhost:3000'],
   });
   const app = createApp(new PostgresStore(db), auth, db);
   return { db, auth, app };

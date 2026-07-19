@@ -142,6 +142,27 @@ export interface CommentsTable {
   created_at: Generated<Date>;
 }
 
+/**
+ * Added by migrations/0014_permissions.ts. The catalog of concrete
+ * permissions the app checks -- no surrogate id, keyed by (resource, action).
+ */
+export interface PermissionsTable {
+  resource: string;
+  action: string;
+  description: string;
+}
+
+/**
+ * Added by migrations/0014_permissions.ts. The grants: a role holds a
+ * `(resource, action)` pattern, either segment of which may be `'*'`.
+ */
+export interface RolePermissionsTable {
+  id: string;
+  role_id: string;
+  resource: string;
+  action: string;
+}
+
 export interface Database {
   organizations: OrganizationsTable;
   workspaces: WorkspacesTable;
@@ -157,4 +178,6 @@ export interface Database {
   roles: RolesTable;
   role_assignments: RoleAssignmentsTable;
   comments: CommentsTable;
+  permissions: PermissionsTable;
+  role_permissions: RolePermissionsTable;
 }

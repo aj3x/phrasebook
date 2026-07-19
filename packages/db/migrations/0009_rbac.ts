@@ -2,10 +2,14 @@ import type { Kysely } from 'kysely';
 import type { Migration } from 'kysely/migration';
 
 /**
- * Fixed IDs for the five built-in roles (§F3) so later migrations, seeds,
+ * Fixed IDs for the six built-in roles (§F3) so later migrations, seeds,
  * and application code can reference them without a name lookup. No
  * custom-role *creation* UI in M2 -- a custom role is just another row
  * here with is_custom = true, added later.
+ *
+ * `owner` is added by migrations/0014_permissions.ts (M3 Phase A), not
+ * seeded here -- kept in this const so every built-in role ID lives in one
+ * place regardless of which migration inserts the row.
  */
 export const BUILT_IN_ROLE_IDS = {
   admin: '10000000-0000-0000-0000-000000000001',
@@ -13,6 +17,7 @@ export const BUILT_IN_ROLE_IDS = {
   translator: '10000000-0000-0000-0000-000000000003',
   reviewer: '10000000-0000-0000-0000-000000000004',
   viewer: '10000000-0000-0000-0000-000000000005',
+  owner: '10000000-0000-0000-0000-000000000006',
 } as const;
 
 export const migration0009Rbac: Migration = {
