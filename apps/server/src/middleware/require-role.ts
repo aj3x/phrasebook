@@ -1,9 +1,7 @@
 import type { Database } from '@phrasebook/db';
 import type { MiddlewareHandler } from 'hono';
 import type { Kysely } from 'kysely';
-import type { AuthContext } from './session';
-
-type Env = { Variables: { authContext: AuthContext | null } };
+import type { Env } from '../types';
 
 /**
  * Additive-only (§D4): a request passes if the signed-in user has ANY role

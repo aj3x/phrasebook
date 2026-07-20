@@ -2,9 +2,8 @@ import type { Database } from '@phrasebook/db';
 import type { MiddlewareHandler } from 'hono';
 import type { Kysely } from 'kysely';
 import type { Store } from '../store/store';
+import type { Env } from '../types';
 import type { AuthContext } from './session';
-
-type Env = { Variables: { authContext: AuthContext | null } };
 
 export interface RoleScope {
   projectId?: string;

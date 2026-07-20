@@ -24,6 +24,7 @@ interface RouterContext {
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
+  notFoundComponent: NotFoundPage,
 });
 
 const indexRoute = createRoute({
@@ -63,6 +64,19 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   authRoute.addChildren([projectsRoute, projectRoute]),
 ]);
+
+function NotFoundPage() {
+  const navigate = useNavigate();
+
+  return (
+    <main>
+      <p>Page not found.</p>
+      <button type="button" onClick={() => navigate({ to: '/projects' })}>
+        Back to projects
+      </button>
+    </main>
+  );
+}
 
 function RootLayout() {
   const { queryClient } = rootRoute.useRouteContext();
