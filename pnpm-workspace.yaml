@@ -3,5 +3,15 @@ packages:
   - "packages/*"
 allowBuilds:
   '@biomejs/biome': true
+# The repo is edited from macOS but also runs inside a Linux container over
+# the same virtiofs-mounted node_modules. Without this, an install from
+# either side unpacks only its own platform's native binaries and the other
+# side can't start biome, vite or vitest at all.
+supportedArchitectures:
+  os:
+    - darwin
+    - linux
+  cpu:
+    - arm64
 minimumReleaseAgeExclude:
   - hono@4.12.30
