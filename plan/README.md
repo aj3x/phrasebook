@@ -10,7 +10,7 @@ Feedback-driven build plan. **Milestone 1 is deliberately small and end-to-end**
 | [`01-repo-topology.md`](01-repo-topology.md) | Monorepo layout, package boundaries, tooling picks (Bun, Hono, Kysely, etc.). |
 | [`02-milestone-1-rendering-slice.md`](02-milestone-1-rendering-slice.md) | The first thing you'll run. Step-by-step. Definition of done. **Done.** |
 | [`03-milestone-2-editor.md`](03-milestone-2-editor.md) | Editor + auth. Step-by-step, expanded from the outline below now that M1's shape is confirmed. |
-| [`03-milestone-3-onboarding.md`](03-milestone-3-onboarding.md) | Owner role + `resource:action` permissions, then first-run onboarding. Step-by-step. **In progress** — Phase A steps 1-2 done. |
+| [`03-milestone-3-onboarding.md`](03-milestone-3-onboarding.md) | Owner role + `resource:action` permissions, then first-run onboarding. Step-by-step. **In progress** — Phase A steps 1-3 done. |
 | [`03-later-milestones.md`](03-later-milestones.md) | M4 (CLI/adapters) → M5 (workflow/MT) → beyond. Outlines only. |
 | [`04-open-questions.md`](04-open-questions.md) | Running list of things I want your input on as we go. |
 

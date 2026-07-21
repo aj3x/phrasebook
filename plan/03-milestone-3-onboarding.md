@@ -176,7 +176,7 @@ A pure module (`permissions.ts`): parse/validate patterns, and `matches(held, re
 
 *As built* (`apps/server/src/permissions.ts`): a wildcard on the **required** side throws rather than returning a result. The plan says required is always concrete; making that a hard error keeps the matcher total, and turns a would-be silently-permissive query into a caught programming mistake.
 
-**3. `workspace_id` scope dimension on `role_assignments`**
+**3. `workspace_id` scope dimension on `role_assignments`** — **done**
 Nullable column, NULL = all, same rule as `project_id`/`locale_code`. Only one workspace exists in M3, so this is behaviour-neutral today — it's carried now so M7 is a feature milestone rather than a migration of live grant data (D1's precedent). The scope matcher gains a third independent dimension.
 
 **4. `AuthContext` carries permissions**
