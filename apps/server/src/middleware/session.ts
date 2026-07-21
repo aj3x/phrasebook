@@ -5,6 +5,8 @@ import type { Auth } from '../auth';
 
 export interface RoleGrant {
   role: string;
+  /** Three independent scope dimensions; null means "all" for that one. */
+  workspaceId: string | null;
   projectId: string | null;
   localeCode: string | null;
 }
@@ -36,7 +38,12 @@ export function createSessionMiddleware(auth: Auth, db: Kysely<Database>): Middl
     const grants = await db
       .selectFrom('role_assignments')
       .innerJoin('roles', 'roles.id', 'role_assignments.role_id')
-      .select(['roles.name as role', 'role_assignments.project_id', 'role_assignments.locale_code'])
+      .select([
+        'roles.name as role',
+        'role_assignments.workspace_id',
+        'role_assignments.project_id',
+        'role_assignments.locale_code',
+      ])
       .where('role_assignments.user_id', '=', session.user.id)
       .execute();
 
@@ -44,6 +51,7 @@ export function createSessionMiddleware(auth: Auth, db: Kysely<Database>): Middl
       userId: session.user.id,
       roles: grants.map((g) => ({
         role: g.role,
+        workspaceId: g.workspace_id,
         projectId: g.project_id,
         localeCode: g.locale_code,
       })),

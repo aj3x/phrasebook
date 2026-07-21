@@ -96,7 +96,7 @@ describe('session middleware', () => {
     const authContext = (await res.json()) as AuthContext;
 
     expect(authContext.userId).toBe(user.id);
-    expect(authContext.roles).toEqual([{ role: 'Admin', projectId: null, localeCode: null }]);
+    expect(authContext.roles).toEqual([{ role: 'Admin', workspaceId: null, projectId: null, localeCode: null }]);
 
     await db.destroy();
   });

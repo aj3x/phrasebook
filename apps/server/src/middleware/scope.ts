@@ -6,17 +6,30 @@ import type { Env } from '../types';
 import type { AuthContext } from './session';
 
 export interface RoleScope {
+  workspaceId?: string;
   projectId?: string;
   localeCode?: string;
 }
 
 /**
- * Project/locale-scoped role check (§F3 "language-dependent roles"),
- * separate from requireRole's instance-wide check. A grant's NULL
- * project_id/locale_code is a wildcard for that dimension (§F3: "NULL
- * means all"); a dimension not present in `scope` is simply not checked,
- * so a route that doesn't care about locale can still gate on project
- * alone.
+ * One scope dimension of a grant against one dimension of a request. The
+ * two ways to pass are deliberately distinct: the grant is NULL ("all",
+ * §F3), or the request doesn't ask about this dimension at all -- which is
+ * how a project-level route stays usable by a locale-scoped grant.
+ */
+function dimensionCovers(granted: string | null, requested: string | undefined): boolean {
+  return requested === undefined || granted === null || granted === requested;
+}
+
+/**
+ * Workspace/project/locale-scoped role check (§F3 "language-dependent
+ * roles"), separate from requireRole's instance-wide check.
+ *
+ * The three dimensions are independent and ANDed: a grant covers a request
+ * only if it covers every dimension the request names. Adding workspace
+ * was therefore a uniform extension rather than a special case -- which is
+ * the property that keeps M7 (real, user-facing workspaces) a feature
+ * milestone instead of a rewrite of this matcher.
  */
 export function hasScopedRole(
   authContext: AuthContext | null,
@@ -25,24 +38,13 @@ export function hasScopedRole(
 ): boolean {
   if (!authContext) return false;
 
-  return authContext.roles.some((grant) => {
-    if (!roleNames.includes(grant.role)) return false;
-    if (
-      scope.projectId !== undefined &&
-      grant.projectId !== null &&
-      grant.projectId !== scope.projectId
-    ) {
-      return false;
-    }
-    if (
-      scope.localeCode !== undefined &&
-      grant.localeCode !== null &&
-      grant.localeCode !== scope.localeCode
-    ) {
-      return false;
-    }
-    return true;
-  });
+  return authContext.roles.some(
+    (grant) =>
+      roleNames.includes(grant.role) &&
+      dimensionCovers(grant.workspaceId, scope.workspaceId) &&
+      dimensionCovers(grant.projectId, scope.projectId) &&
+      dimensionCovers(grant.localeCode, scope.localeCode),
+  );
 }
 
 /**
