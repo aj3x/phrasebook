@@ -168,11 +168,13 @@ This is a **large milestone** — the permission rework alone is M2-step-4-sized
 
 ### Phase A — Permission foundation (must land first; onboarding depends on it)
 
-**1. `permissions` + `role_permissions` schema + Owner role**
+**1. `permissions` + `role_permissions` schema + Owner role** — **done**
 Migration `0014`: both tables, the concrete-permission catalog seeded as system rows (same reasoning as M2's built-in roles: required in every environment, so migration-inserted, not `seed.ts`), the **Owner** role added to `BUILT_IN_ROLE_IDS`, and the starter matrix seeded as grants. An `is_system` marker so built-in roles (Owner especially) can't be deleted or edited by a future custom-roles UI.
 
-**2. The permission matcher**
+**2. The permission matcher** — **done**
 A pure module (`permissions.ts`): parse/validate patterns, and `matches(held, required)` implementing the wildcard rule. No DB, no HTTP. Exhaustively tested — every combination of concrete/wildcard on both sides, plus malformed input. This is the highest-leverage test file in the milestone.
+
+*As built* (`apps/server/src/permissions.ts`): a wildcard on the **required** side throws rather than returning a result. The plan says required is always concrete; making that a hard error keeps the matcher total, and turns a would-be silently-permissive query into a caught programming mistake.
 
 **3. `workspace_id` scope dimension on `role_assignments`**
 Nullable column, NULL = all, same rule as `project_id`/`locale_code`. Only one workspace exists in M3, so this is behaviour-neutral today — it's carried now so M7 is a feature milestone rather than a migration of live grant data (D1's precedent). The scope matcher gains a third independent dimension.
