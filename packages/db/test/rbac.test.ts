@@ -97,6 +97,80 @@ describe('RBAC tables', () => {
 
     expect(assignment.project_id).toBe('33333333-3333-3333-3333-333333333333');
     expect(assignment.locale_code).toBe('fr');
+    // The third scope dimension defaults to "all", exactly as the other two do.
+    expect(assignment.workspace_id).toBeNull();
+
+    await db.destroy();
+  });
+
+  test('scopes a role assignment to a workspace', async () => {
+    const db = await createMigratedTestDb();
+
+    await db
+      .insertInto('user')
+      .values({ id: 'user_1', name: 'Ada', email: 'ada@example.com', emailVerified: false })
+      .execute();
+    await db
+      .insertInto('organizations')
+      .values({ id: '11111111-1111-1111-1111-111111111111', name: 'Acme' })
+      .execute();
+    await db
+      .insertInto('workspaces')
+      .values({
+        id: '22222222-2222-2222-2222-222222222222',
+        org_id: '11111111-1111-1111-1111-111111111111',
+        name: 'Acme Marketing',
+      })
+      .execute();
+    const adminRole = await db
+      .selectFrom('roles')
+      .select('id')
+      .where('name', '=', 'Admin')
+      .executeTakeFirstOrThrow();
+
+    const assignment = await db
+      .insertInto('role_assignments')
+      .values({
+        id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        user_id: 'user_1',
+        role_id: adminRole.id,
+        workspace_id: '22222222-2222-2222-2222-222222222222',
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+
+    expect(assignment.workspace_id).toBe('22222222-2222-2222-2222-222222222222');
+    // Workspace-scoped but not narrowed further: still every project and locale within it.
+    expect(assignment.project_id).toBeNull();
+    expect(assignment.locale_code).toBeNull();
+
+    await db.destroy();
+  });
+
+  test('rejects a role assignment for an unknown workspace', async () => {
+    const db = await createMigratedTestDb();
+
+    await db
+      .insertInto('user')
+      .values({ id: 'user_1', name: 'Ada', email: 'ada@example.com', emailVerified: false })
+      .execute();
+    const adminRole = await db
+      .selectFrom('roles')
+      .select('id')
+      .where('name', '=', 'Admin')
+      .executeTakeFirstOrThrow();
+
+    await expect(
+      db
+        .insertInto('role_assignments')
+        .values({
+          id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+          user_id: 'user_1',
+          role_id: adminRole.id,
+          workspace_id: '00000000-0000-0000-0000-000000000000',
+        })
+        .execute(),
+    ).rejects.toThrow();
 
     await db.destroy();
   });

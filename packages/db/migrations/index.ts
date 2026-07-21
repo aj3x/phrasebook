@@ -13,6 +13,7 @@ import { migration0011ProjectAutoApprove } from './0011_project_auto_approve';
 import { migration0012TranslationLastEditor } from './0012_translation_last_editor';
 import { migration0013Comments } from './0013_comments';
 import { migration0014Permissions } from './0014_permissions';
+import { migration0015RoleAssignmentWorkspaceScope } from './0015_role_assignment_workspace_scope';
 
 export const migrations: Record<string, Migration> = {
   '0001_organizations': migration0001Organizations,
@@ -29,4 +30,5 @@ export const migrations: Record<string, Migration> = {
   '0012_translation_last_editor': migration0012TranslationLastEditor,
   '0013_comments': migration0013Comments,
   '0014_permissions': migration0014Permissions,
+  '0015_role_assignment_workspace_scope': migration0015RoleAssignmentWorkspaceScope,
 };

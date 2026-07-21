@@ -127,6 +127,8 @@ export interface RoleAssignmentsTable {
   id: string;
   user_id: string;
   role_id: string;
+  /** The three scope dimensions, each independent: NULL means "all". */
+  workspace_id: Nullable<string>;
   project_id: Nullable<string>;
   locale_code: Nullable<string>;
 }
