@@ -189,7 +189,13 @@ describe('PATCH /v1/projects/:project/settings', () => {
     await db.destroy();
   });
 
-  test('a Developer scoped to the project can toggle it', async () => {
+  // M3: project settings is now gated on `settings:update`, which the
+  // permission matrix grants to Admin/Owner only. A Developer is a content
+  // role (namespace/key/translation), so it no longer manages project
+  // configuration -- the deliberate narrowing from M2's Admin+Developer
+  // CAN_MANAGE_PROJECT lump (DoD #7: a role lacking the permission is refused
+  // server-side).
+  test('a Developer scoped to the project is refused -- it lacks settings:update', async () => {
     const { db, app } = await createTestSetup();
     const cookie = await signUpWithRole(
       app,
@@ -201,7 +207,7 @@ describe('PATCH /v1/projects/:project/settings', () => {
 
     const res = await patchAutoApprove(app, cookie, { autoApprove: false });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
 
     await db.destroy();
   });

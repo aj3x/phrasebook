@@ -50,7 +50,7 @@ export function createApp(
   app.on(['POST', 'GET'], '/api/auth/*', (c) => auth.handler(c.req.raw));
 
   // Resolves the session for every route (authContext is null if there's no
-  // session) -- it never rejects by itself. requireRole/hasScopedRole are
+  // session) -- it never rejects by itself. requirePermission/hasPermission are
   // what actually gate a route; /v1/* simply doesn't check authContext, so
   // this doesn't change the M1 runtime endpoint's public/unauthenticated
   // behavior.

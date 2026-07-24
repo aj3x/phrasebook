@@ -1,8 +1,7 @@
 import type { Database } from '@phrasebook/db';
 import { Hono } from 'hono';
 import type { Kysely } from 'kysely';
-import { requireProjectAndLocaleScope } from '../middleware/scope';
-import { CAN_REVIEW_TRANSLATIONS, CAN_SAVE_TRANSLATIONS } from '../roles';
+import { requireProjectAndLocalePermission } from '../middleware/permission';
 import { InvalidTransitionError } from '../status';
 import { SaveConflictError, SelfApprovalError } from '../store/store';
 import type { Store } from '../store/store';
@@ -13,7 +12,7 @@ export function createTranslationsRoutes(store: Store, db: Kysely<Database>) {
 
   app.put(
     '/projects/:project/translations/:namespace/:locale/:key',
-    requireProjectAndLocaleScope(db, store, CAN_SAVE_TRANSLATIONS),
+    requireProjectAndLocalePermission(db, store, 'translation:save'),
     async (c) => {
       const { project, namespace, locale, key } = c.req.param();
       const authContext = c.get('authContext');
@@ -44,7 +43,7 @@ export function createTranslationsRoutes(store: Store, db: Kysely<Database>) {
 
   app.post(
     '/projects/:project/translations/:namespace/:locale/:key/claim',
-    requireProjectAndLocaleScope(db, store, CAN_REVIEW_TRANSLATIONS),
+    requireProjectAndLocalePermission(db, store, 'translation:claim'),
     async (c) => {
       const { project, namespace, locale, key } = c.req.param();
       try {
@@ -58,7 +57,7 @@ export function createTranslationsRoutes(store: Store, db: Kysely<Database>) {
 
   app.post(
     '/projects/:project/translations/:namespace/:locale/:key/approve',
-    requireProjectAndLocaleScope(db, store, CAN_REVIEW_TRANSLATIONS),
+    requireProjectAndLocalePermission(db, store, 'translation:approve'),
     async (c) => {
       const { project, namespace, locale, key } = c.req.param();
       const authContext = c.get('authContext');
@@ -76,7 +75,7 @@ export function createTranslationsRoutes(store: Store, db: Kysely<Database>) {
 
   app.post(
     '/projects/:project/translations/:namespace/:locale/:key/send-back',
-    requireProjectAndLocaleScope(db, store, CAN_REVIEW_TRANSLATIONS),
+    requireProjectAndLocalePermission(db, store, 'translation:send_back'),
     async (c) => {
       const { project, namespace, locale, key } = c.req.param();
       const authContext = c.get('authContext');

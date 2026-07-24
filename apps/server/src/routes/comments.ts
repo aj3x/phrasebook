@@ -1,8 +1,7 @@
 import type { Database } from '@phrasebook/db';
 import { Hono } from 'hono';
 import type { Kysely } from 'kysely';
-import { requireProjectAndLocaleScope } from '../middleware/scope';
-import { ANY_ROLE, CAN_SAVE_TRANSLATIONS } from '../roles';
+import { requireProjectAndLocalePermission } from '../middleware/permission';
 import type { Store } from '../store/store';
 import type { Env } from '../types';
 
@@ -11,7 +10,7 @@ export function createCommentsRoutes(store: Store, db: Kysely<Database>) {
 
   app.get(
     '/projects/:project/comments/:namespace/:locale/:key',
-    requireProjectAndLocaleScope(db, store, ANY_ROLE),
+    requireProjectAndLocalePermission(db, store, 'comment:view'),
     async (c) => {
       const { project, namespace, locale, key } = c.req.param();
       try {
@@ -25,9 +24,9 @@ export function createCommentsRoutes(store: Store, db: Kysely<Database>) {
 
   app.post(
     '/projects/:project/comments/:namespace/:locale/:key',
-    // Viewers can read the thread but not post to it; everyone else who can
-    // touch a translation can comment.
-    requireProjectAndLocaleScope(db, store, CAN_SAVE_TRANSLATIONS),
+    // Viewers can read the thread but not post to it (they hold comment:view,
+    // not comment:create); everyone else who can touch a translation can comment.
+    requireProjectAndLocalePermission(db, store, 'comment:create'),
     async (c) => {
       const { project, namespace, locale, key } = c.req.param();
       const authContext = c.get('authContext');

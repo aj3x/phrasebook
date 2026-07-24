@@ -184,11 +184,15 @@ Session middleware joins `role_permissions` so each grant carries its patterns a
 
 *As built* (`apps/server/src/middleware/session.ts`): rather than a three-way join (assignment × role × permission) that would multiply rows, the middleware fetches assignments, then all patterns for the distinct assigned `role_id`s in one query, and attaches them per grant in memory. `RoleGrant.permissions` is a required field (`Permission[]`), so a grant always carries its patterns.
 
-**5. `requirePermission` / `hasPermission`**
+**5. `requirePermission` / `hasPermission`** — **done**
 The permission-checking siblings of `requireRole`/`hasScopedRole`, keeping the existing auth + `locked` + scope semantics intact. Built alongside the old ones, not yet swapped in.
 
-**6. Migrate every route off role names**
+*As built* (`apps/server/src/middleware/permission.ts`): pure `hasPermission(ctx, required, scope)` (scope-matched, wildcard via `permissionSatisfies`), plus three middleware factories mirroring the role-name ones — `requirePermission` (instance-wide), `requireProjectAndLocalePermission`, `requireProjectPermission`. `permissions.ts` gained `permissionSatisfies` (parsed-input matcher) so the in-memory grant hot path avoids re-serializing/re-parsing; `matches` now wraps it. Scoped factories are proven through the route tests when step 6 swaps them in (same convention as the role-name scoped middleware, which has no standalone test).
+
+**6. Migrate every route off role names** — **done**
 Swap the four M2 constants for permission checks per the mapping table, then **delete** `requireRole`/`hasScopedRole` and the constants so there's one authorization mechanism, not two. M2's existing route tests should pass essentially unchanged — that's the proof the rework preserved behavior.
+
+*As built*: all four route files migrated (`translations`, `comments`, `projects`, `keys`), inline `hasScopedRole` calls swapped for `hasPermission`, and `scope.ts` / `require-role.ts` / `roles.ts` (plus their tests) deleted. Two **deliberate narrowings** fall out of the approved matrix rather than being behavior-preserving: under M2 `CAN_MANAGE_PROJECT` and `CAN_REVIEW_TRANSLATIONS` both included **Developer**, but the matrix gives `settings:*` and the review actions (`claim`/`approve`/`send_back`) to Admin/Owner and Reviewer only. So Developers lost project-settings management and translation review — intended, and exactly the DoD #7 "role lacking the permission is refused" property. The `project-settings` test that asserted "a Developer can toggle" was flipped to assert a 403; no test guarded Developer-can-review, so that narrowing was silent. Everything else passed unchanged.
 
 **7. Last-Owner protection**
 The last remaining Owner cannot be locked, demoted, or deleted. Enforced server-side at the mutation points (M2's `locked` flag and role-assignment paths), with tests for each.

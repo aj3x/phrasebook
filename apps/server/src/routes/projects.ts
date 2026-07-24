@@ -1,8 +1,7 @@
 import type { Database } from '@phrasebook/db';
 import { Hono } from 'hono';
 import type { Kysely } from 'kysely';
-import { hasScopedRole, requireProjectScope } from '../middleware/scope';
-import { ANY_ROLE, CAN_MANAGE_PROJECT } from '../roles';
+import { hasPermission, requireProjectPermission } from '../middleware/permission';
 import type { Store } from '../store/store';
 import type { Env } from '../types';
 
@@ -39,7 +38,7 @@ export function createProjectsRoutes(store: Store, db: Kysely<Database>) {
     if (!projectId) {
       return c.json({ error: 'Not found' }, 404);
     }
-    if (!hasScopedRole(authContext, ANY_ROLE, { projectId })) {
+    if (!hasPermission(authContext, 'project:view', { projectId })) {
       return c.json({ error: 'Forbidden' }, 403);
     }
 
@@ -49,7 +48,7 @@ export function createProjectsRoutes(store: Store, db: Kysely<Database>) {
 
   app.patch(
     '/projects/:project/settings',
-    requireProjectScope(db, store, CAN_MANAGE_PROJECT),
+    requireProjectPermission(db, store, 'settings:update'),
     async (c) => {
       const { project } = c.req.param();
       const body = await c.req.json().catch(() => ({}));

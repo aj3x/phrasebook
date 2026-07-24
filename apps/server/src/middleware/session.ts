@@ -29,7 +29,7 @@ export interface AuthContext {
  * ...), for every subsequent editor-facing route to read. This middleware
  * only *resolves* -- it never rejects a request itself (authContext is null
  * for an unauthenticated request, next() still runs). Enforcement is a
- * separate requireRole()-style middleware applied per-route (M2 step 3),
+ * separate requirePermission()-style middleware applied per-route,
  * so a route can distinguish "not logged in" from "logged in, wrong role"
  * without this middleware needing to know which routes require what.
  */

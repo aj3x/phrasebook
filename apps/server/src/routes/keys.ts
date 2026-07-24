@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
-import { hasScopedRole } from '../middleware/scope';
-import { ANY_ROLE } from '../roles';
+import { hasPermission } from '../middleware/permission';
 import type { Store } from '../store/store';
 import type { Env } from '../types';
 
@@ -18,7 +17,7 @@ export function createKeysRoutes(store: Store) {
     if (!projectId) {
       return c.json({ error: 'Not found' }, 404);
     }
-    if (!hasScopedRole(authContext, ANY_ROLE, { projectId })) {
+    if (!hasPermission(authContext, 'key:view', { projectId })) {
       return c.json({ error: 'Forbidden' }, 403);
     }
 
