@@ -10,6 +10,7 @@ import { createKeysRoutes } from './routes/keys';
 import { createProjectsRoutes } from './routes/projects';
 import { createRoleAssignmentsRoutes } from './routes/role-assignments';
 import { createRuntimeRoutes } from './routes/runtime';
+import { createSetupRoutes } from './routes/setup';
 import { createTranslationsRoutes } from './routes/translations';
 import type { Store } from './store/store';
 import type { Env } from './types';
@@ -59,6 +60,7 @@ export function createApp(
 
   app.get('/health', (c) => c.text('OK'));
 
+  app.route('/v1', createSetupRoutes(auth, db));
   app.route('/v1', createRuntimeRoutes(store));
   app.route('/v1', createProjectsRoutes(store, db));
   app.route('/v1', createKeysRoutes(store));
