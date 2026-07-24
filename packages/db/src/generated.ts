@@ -165,6 +165,18 @@ export interface RolePermissionsTable {
   action: string;
 }
 
+/**
+ * Added by migrations/0016_instance_setup.ts. The one-time bootstrap
+ * singleton: at most one row, keyed by the fixed sentinel `INSTANCE_SETUP_ID`,
+ * so two racing `POST /v1/setup` calls can't both create an Owner.
+ */
+export interface InstanceSetupTable {
+  id: string;
+  owner_user_id: string;
+  org_id: string;
+  created_at: Generated<Date>;
+}
+
 export interface Database {
   organizations: OrganizationsTable;
   workspaces: WorkspacesTable;
@@ -182,4 +194,5 @@ export interface Database {
   comments: CommentsTable;
   permissions: PermissionsTable;
   role_permissions: RolePermissionsTable;
+  instance_setup: InstanceSetupTable;
 }
