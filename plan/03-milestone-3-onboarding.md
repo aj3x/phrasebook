@@ -208,18 +208,32 @@ The last remaining Owner cannot be locked, demoted, or deleted. Enforced server-
 
 ### Phase B — Onboarding backend
 
-**9. `GET /v1/setup/status`** — public, read-only, `{ needsSetup }` derived from "does an org exist." No information leakage.
+**9. `GET /v1/setup/status`** — **done**
+Public, read-only, `{ needsSetup }` derived from "does an org exist." No information leakage.
 
-**10. `POST /v1/setup` — atomic owner + org bootstrap** (the load-bearing step)
-Body: `{ ownerEmail, password, ownerName?, orgName }`. One transaction: better-auth `signUpEmail` (real hashing path — same reason `seedAdminUser` uses it) → Owner role assignment → org → default workspace → session cookie returned. Guarded by the state check + DB-level singleton invariant. Tests: happy path, already-setup → 409, and a genuine concurrency test proving only one of two racing calls wins.
+*As built* (`apps/server/src/routes/setup.ts`): a single unauthenticated `GET /v1/setup/status` returning exactly `{ needsSetup }` and nothing else. A test asserts the response body's only key is `needsSetup` and that the org name never appears in it.
 
-**11. `POST /v1/projects` — reusable project creation**
+**10. `POST /v1/setup` — atomic owner + org bootstrap** (the load-bearing step) — **done**
+Body: `{ ownerEmail, password, ownerName?, orgName }`. better-auth `signUpEmail` (real hashing path — same reason `seedAdminUser` uses it) → org → default workspace → Owner role assignment → session cookie returned. Guarded by the state check + DB-level singleton invariant. Tests: happy path, already-setup → 409, and a concurrency test proving only one of two racing calls creates an Owner.
+
+*As built*: migration `0016` adds an `instance_setup` singleton table written with a fixed sentinel PK (`INSTANCE_SETUP_ID`); org/workspace/singleton/owner-assignment commit in one transaction, so two racing calls collide on that PK and the loser rolls back to a clean 409 — race safety at the DB, not check-then-insert. The better-auth user is created *before* the transaction (its adapter writes on its own connection), so the atomic unit is org+workspace+singleton+owner-assignment; a race loser leaves only an orphaned, role-less user. **Note:** pg-mem's Kysely adapter doesn't emulate transaction rollback, so the concurrency test asserts the observable single-Owner/single-singleton invariant rather than org rollback (which real Postgres performs). A fast pre-check returns 409 for the common already-set-up repeat call; the singleton is the actual guard.
+
+**11. `POST /v1/projects` — reusable project creation** — **done**
 `{ name, sourceLocale, targetLocales[] }`, project + locale rows in one transaction, locale codes validated against the CLDR set `packages/icu` already pins. Gated on `project:create` — held by Owner *and* Admin (workspace-scoped), per decision 1b. The wizard and a future "new project" button call this same endpoint — no wizard-only variant. **Delete `GET /v1/temp/seed` in this commit.**
 
-**12. Survey capture** — `onboarding_responses` (owner-scoped, JSON payload, `created_at`) + `POST /v1/setup/survey`. Nothing keys off the data in M3; it's captured for future defaults/tour work. Optional by construction — completion without it must work.
+*As built* (`apps/server/src/routes/projects.ts`): locale validation is a new `isSupportedLocale` in `@phrasebook/icu` (canonical BCP-47 tag *and* a CLDR-known language via `Intl`, so `zz`/`EN`/`en_US` are refused rather than stored and later failing to format). The source locale is stored as a locale row too (matching the seed), so the set is source + targets deduped. Workspace stays implicit: `workspaceId` is optional and resolves to M3's single workspace, with an explicit field carried for M7; the scope check stops an Admin creating in another workspace. Project name is checked for uniqueness at the app layer (the Store looks projects up by name) → 409. `GET /v1/temp/seed` and `routes/dev.ts` deleted.
 
-**13. Seed reconciliation**
+**12. Survey capture** — **done**
+`onboarding_responses` (owner-scoped, JSON payload, `created_at`) + `POST /v1/setup/survey`. Nothing keys off the data in M3; it's captured for future defaults/tour work. Optional by construction — completion without it must work.
+
+*As built*: migration `0017` adds an owner-scoped `onboarding_responses` table with a free-form `jsonb` payload (a typed schema would ossify a question set still in flux). `POST /v1/setup/survey` requires only a valid unlocked session (a user submits their own answers — no dedicated permission) and rejects a non-object body with 400.
+
+**13. Seed reconciliation** — **done**
 Split `seed()` (demo data, dev default) from `seedAdminUser()` (behind a flag, off wherever onboarding should own bootstrap). Verify a real-deployment posture boots to `needsSetup: true` while dev keeps its convenience admin. `docker-compose.yml` env + `CONTRIBUTING.md` updated in the same commit.
+
+*As built* (`apps/server/src/seed.ts`): a testable `resolveSeedFlags(env)` reads `SEED_DEMO_DATA` and `SEED_DEV_ADMIN`, each defaulting on outside production and off under `NODE_ENV=production` with the flag unset — so a real deployment's seed is a no-op and it boots to `needsSetup: true`, while local dev keeps demo data + the convenience admin. `docker-compose.yml` opts the local demo posture into both flags (keeping demo-web's fallback chain and editor login working out of the box) with a comment on dropping them to try the wizard; the entrypoint, `CONTRIBUTING.md`, and `.env.example` document the split.
+
+**Phase B is now complete** (steps 9–13). The onboarding backend is in place; the wizard UI (Phase C) can build on it.
 
 ### Phase C — The wizard (`apps/editor`)
 
