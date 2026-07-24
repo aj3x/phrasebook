@@ -5,7 +5,6 @@ import type { Kysely } from 'kysely';
 import type { Auth } from './auth';
 import { createSessionMiddleware } from './middleware/session';
 import { createCommentsRoutes } from './routes/comments';
-import { createDevRoutes } from './routes/dev';
 import { createKeysRoutes } from './routes/keys';
 import { createProjectsRoutes } from './routes/projects';
 import { createRoleAssignmentsRoutes } from './routes/role-assignments';
@@ -67,7 +66,6 @@ export function createApp(
   app.route('/v1', createTranslationsRoutes(store, db));
   app.route('/v1', createCommentsRoutes(store, db));
   app.route('/v1', createRoleAssignmentsRoutes(db));
-  app.route('/v1', createDevRoutes(auth, db));
 
   return app;
 }

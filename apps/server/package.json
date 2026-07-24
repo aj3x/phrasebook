@@ -13,6 +13,7 @@
   "dependencies": {
     "@better-auth/kysely-adapter": "^1.6.23",
     "@phrasebook/db": "workspace:*",
+    "@phrasebook/icu": "workspace:*",
     "@phrasebook/schemas": "workspace:*",
     "better-auth": "^1.6.23",
     "hono": "^4.12.30",

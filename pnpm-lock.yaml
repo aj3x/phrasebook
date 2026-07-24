@@ -112,6 +112,9 @@ importers:
       '@phrasebook/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@phrasebook/icu':
+        specifier: workspace:*
+        version: link:../../packages/icu
       '@phrasebook/schemas':
         specifier: workspace:*
         version: link:../../packages/schemas
