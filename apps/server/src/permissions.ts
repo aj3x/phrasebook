@@ -44,15 +44,24 @@ export function parsePermission(pattern: string): Permission {
  * user is allowed something if *any* held pattern matches).
  */
 export function matches(held: string, required: string): boolean {
-  const heldPermission = parsePermission(held);
-  const requiredPermission = parsePermission(required);
+  return permissionSatisfies(parsePermission(held), parsePermission(required));
+}
 
-  if (requiredPermission.resource === '*' || requiredPermission.action === '*') {
-    throw new Error(`Required permission "${required}" must be concrete, not a wildcard`);
+/**
+ * The wildcard rule on already-parsed permissions -- the hot path for the
+ * session's in-memory grants, which are stored parsed (`RoleGrant.permissions`)
+ * and would otherwise be re-serialized and re-parsed on every check. `matches`
+ * is the string-input wrapper over this.
+ */
+export function permissionSatisfies(held: Permission, required: Permission): boolean {
+  if (required.resource === '*' || required.action === '*') {
+    throw new Error(
+      `Required permission "${required.resource}:${required.action}" must be concrete, not a wildcard`,
+    );
   }
 
   return (
-    (heldPermission.resource === requiredPermission.resource || heldPermission.resource === '*') &&
-    (heldPermission.action === requiredPermission.action || heldPermission.action === '*')
+    (held.resource === required.resource || held.resource === '*') &&
+    (held.action === required.action || held.action === '*')
   );
 }

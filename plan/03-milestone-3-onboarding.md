@@ -179,8 +179,10 @@ A pure module (`permissions.ts`): parse/validate patterns, and `matches(held, re
 **3. `workspace_id` scope dimension on `role_assignments`** — **done**
 Nullable column, NULL = all, same rule as `project_id`/`locale_code`. Only one workspace exists in M3, so this is behaviour-neutral today — it's carried now so M7 is a feature milestone rather than a migration of live grant data (D1's precedent). The scope matcher gains a third independent dimension.
 
-**4. `AuthContext` carries permissions**
+**4. `AuthContext` carries permissions** — **done**
 Session middleware joins `role_permissions` so each grant carries its patterns alongside its (now three-dimensional) scope. Pure plumbing, no behavior change yet.
+
+*As built* (`apps/server/src/middleware/session.ts`): rather than a three-way join (assignment × role × permission) that would multiply rows, the middleware fetches assignments, then all patterns for the distinct assigned `role_id`s in one query, and attaches them per grant in memory. `RoleGrant.permissions` is a required field (`Permission[]`), so a grant always carries its patterns.
 
 **5. `requirePermission` / `hasPermission`**
 The permission-checking siblings of `requireRole`/`hasScopedRole`, keeping the existing auth + `locked` + scope semantics intact. Built alongside the old ones, not yet swapped in.
