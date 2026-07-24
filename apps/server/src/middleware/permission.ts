@@ -65,9 +65,11 @@ export function hasPermission(
  * Shared 401/locked gate. Returns the auth context on success, or a Response
  * to short-circuit -- the locked flag is the one revoke-everything mechanism
  * (§D4/F3), checked before any permission so a locked account is refused
- * regardless of what it holds.
+ * regardless of what it holds. Exported for handlers that must resolve the
+ * actor themselves before a scope-dependent permission check (e.g. role
+ * assignment, where the scope to check comes from the DB row, not the URL).
  */
-async function requireUnlocked(
+export async function requireUnlocked(
   c: Parameters<MiddlewareHandler<Env>>[0],
   db: Kysely<Database>,
 ): Promise<AuthContext | Response> {

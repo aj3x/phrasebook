@@ -8,6 +8,7 @@ import { createCommentsRoutes } from './routes/comments';
 import { createDevRoutes } from './routes/dev';
 import { createKeysRoutes } from './routes/keys';
 import { createProjectsRoutes } from './routes/projects';
+import { createRoleAssignmentsRoutes } from './routes/role-assignments';
 import { createRuntimeRoutes } from './routes/runtime';
 import { createTranslationsRoutes } from './routes/translations';
 import type { Store } from './store/store';
@@ -63,6 +64,7 @@ export function createApp(
   app.route('/v1', createKeysRoutes(store));
   app.route('/v1', createTranslationsRoutes(store, db));
   app.route('/v1', createCommentsRoutes(store, db));
+  app.route('/v1', createRoleAssignmentsRoutes(db));
   app.route('/v1', createDevRoutes(auth, db));
 
   return app;

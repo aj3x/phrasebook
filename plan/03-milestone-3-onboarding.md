@@ -194,8 +194,10 @@ Swap the four M2 constants for permission checks per the mapping table, then **d
 
 *As built*: all four route files migrated (`translations`, `comments`, `projects`, `keys`), inline `hasScopedRole` calls swapped for `hasPermission`, and `scope.ts` / `require-role.ts` / `roles.ts` (plus their tests) deleted. Two **deliberate narrowings** fall out of the approved matrix rather than being behavior-preserving: under M2 `CAN_MANAGE_PROJECT` and `CAN_REVIEW_TRANSLATIONS` both included **Developer**, but the matrix gives `settings:*` and the review actions (`claim`/`approve`/`send_back`) to Admin/Owner and Reviewer only. So Developers lost project-settings management and translation review — intended, and exactly the DoD #7 "role lacking the permission is refused" property. The `project-settings` test that asserted "a Developer can toggle" was flipped to assert a 403; no test guarded Developer-can-review, so that narrowing was silent. Everything else passed unchanged.
 
-**7. Last-Owner protection**
+**7. Last-Owner protection** — **done**
 The last remaining Owner cannot be locked, demoted, or deleted. Enforced server-side at the mutation points (M2's `locked` flag and role-assignment paths), with tests for each.
+
+*As built* (`apps/server/src/owner-guard.ts`): a single data-layer chokepoint `assertNotLastOwner(db, userId, action)` rather than per-endpoint checks, refusing when an action would leave zero *active* (unlocked) Owners — a locked Owner doesn't count, so the last working Owner stays protected even beside a disabled Owner row. Takes a `Kysely | Transaction` so it runs inside the mutation's own tx (atomic check+write, no TOCTOU). No lock/delete/revoke endpoint exists in M3 yet, so — like step 5 — the guard is built and exhaustively tested here and wired into step 8's role-revocation path. The invariant is "≥1 active Owner always remains", covering demote/lock/delete uniformly.
 
 **8. Role assignment endpoints**
 `role_assignment:*` needs a surface for Admins to actually use it: assign/revoke a role for a user, scoped to the caller's workspace. Gated on `role_assignment:create`/`:revoke`, with the scope check preventing an Admin from granting outside their own workspace — and from granting Owner, which lives behind `role:*`. This is what makes decision 1b real rather than theoretical.
