@@ -189,6 +189,33 @@ export async function seedAdminUser(
   }
 }
 
+export interface SeedFlags {
+  seedDemoData: boolean;
+  seedDevAdmin: boolean;
+}
+
+function parseBoolEnv(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined || value === '') return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
+}
+
+/**
+ * What the seed script should do, resolved from the environment (M3 Phase B
+ * step 13). The real-deployment posture -- NODE_ENV=production with neither
+ * flag set -- seeds nothing, so the instance boots to `needsSetup: true` and
+ * the first-run wizard owns bootstrap. Dev defaults to the convenience demo
+ * data (so demo-web's fallback chain works out of the box) plus the dev admin
+ * (editor login). Either flag explicitly overrides its posture-derived
+ * default, so a deployment can opt into demo data, or a dev can suppress it.
+ */
+export function resolveSeedFlags(env: Record<string, string | undefined>): SeedFlags {
+  const devDefault = env.NODE_ENV !== 'production';
+  return {
+    seedDemoData: parseBoolEnv(env.SEED_DEMO_DATA, devDefault),
+    seedDevAdmin: parseBoolEnv(env.SEED_DEV_ADMIN, devDefault),
+  };
+}
+
 if (import.meta.main) {
   const connectionString = process.env.DATABASE_URL;
   const authSecret = process.env.BETTER_AUTH_SECRET;
@@ -201,14 +228,26 @@ if (import.meta.main) {
     process.exit(1);
   }
 
+  const flags = resolveSeedFlags(process.env);
   const db = createDb(connectionString);
   const auth = createAuth({
     db,
     secret: authSecret,
     baseURL: process.env.BETTER_AUTH_URL ?? `http://localhost:${process.env.PORT ?? 3000}`,
   });
-  await seed(db);
-  await seedAdminUser(auth, db);
+
+  if (flags.seedDemoData) {
+    await seed(db);
+    console.log('Seeded demo data.');
+  }
+  if (flags.seedDevAdmin) {
+    await seedAdminUser(auth, db);
+    console.log(`Seeded dev admin (${DEV_ADMIN_EMAIL}).`);
+  }
+  if (!flags.seedDemoData && !flags.seedDevAdmin) {
+    console.log('Seeding skipped; the first-run setup wizard will own bootstrap.');
+  }
+
   await db.destroy();
   console.log('Seed complete.');
 }

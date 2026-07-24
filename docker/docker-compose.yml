@@ -39,6 +39,15 @@ services:
       # Postgres password above. Generate a real one for any real deploy.
       BETTER_AUTH_SECRET: "dev-only-secret-change-me-32-chars-min"
       BETTER_AUTH_URL: "http://localhost:3000"
+      # This compose file is the local demo/dev posture, so it opts into
+      # seeding: demo data (so demo-web's fr-CA fallback works out of the box)
+      # and a convenience admin (editor login, see CONTRIBUTING.md). A real
+      # deployment omits both -- with NODE_ENV=production the seed then does
+      # nothing and the instance boots to needsSetup: true, so the first-run
+      # setup wizard owns bootstrap (M3). Set either to "false" here to try
+      # that wizard flow against a fresh database volume.
+      SEED_DEMO_DATA: "true"
+      SEED_DEV_ADMIN: "true"
     ports:
       - "127.0.0.1:3000:3000"
 
