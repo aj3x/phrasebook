@@ -183,3 +183,59 @@ describe('POST /v1/setup', () => {
     await db.destroy();
   });
 });
+
+function postSurvey(app: ReturnType<typeof createApp>, cookie: string | null, body: unknown) {
+  return app.request('/v1/setup/survey', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+    body: JSON.stringify(body),
+  });
+}
+
+describe('POST /v1/setup/survey', () => {
+  test('captures an authenticated owner survey scoped to the user', async () => {
+    const { db, app } = await createTestSetup();
+    const cookie = extractSessionCookie(await postSetup(app, VALID));
+
+    const answers = { teamSize: '2-10', useCase: 'mobile app', formats: ['icu'] };
+    const res = await postSurvey(app, cookie, answers);
+    expect(res.status).toBe(201);
+
+    const user = await db
+      .selectFrom('user')
+      .select('id')
+      .where('email', '=', VALID.ownerEmail)
+      .executeTakeFirstOrThrow();
+    const row = await db.selectFrom('onboarding_responses').selectAll().executeTakeFirstOrThrow();
+    expect(row.user_id).toBe(user.id);
+    expect(row.payload).toEqual(answers);
+
+    await db.destroy();
+  });
+
+  test('rejects an unauthenticated survey with 401', async () => {
+    const { db, app } = await createTestSetup();
+
+    const res = await postSurvey(app, null, { teamSize: '1' });
+    expect(res.status).toBe(401);
+
+    const rows = await db.selectFrom('onboarding_responses').select('id').execute();
+    expect(rows).toHaveLength(0);
+
+    await db.destroy();
+  });
+
+  test.each([
+    ['an array', ['a', 'b']],
+    ['a bare string', 'nope'],
+    ['null', null],
+  ])('rejects %s body with 400', async (_label, body) => {
+    const { db, app } = await createTestSetup();
+    const cookie = extractSessionCookie(await postSetup(app, VALID));
+
+    const res = await postSurvey(app, cookie, body);
+    expect(res.status).toBe(400);
+
+    await db.destroy();
+  });
+});

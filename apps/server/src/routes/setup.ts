@@ -2,6 +2,7 @@ import { BUILT_IN_ROLE_IDS, type Database, INSTANCE_SETUP_ID } from '@phrasebook
 import { Hono } from 'hono';
 import type { Kysely } from 'kysely';
 import type { Auth } from '../auth';
+import { requireUnlocked } from '../middleware/permission';
 import type { Env } from '../types';
 
 /**
@@ -149,6 +150,35 @@ export function createSetupRoutes(auth: Auth, db: Kysely<Database>) {
       c.header('set-cookie', setCookie);
     }
     return c.json({ userId, orgId, workspaceId }, 201);
+  });
+
+  /**
+   * Optional onboarding questionnaire capture (M3 Phase B step 12). Stores the
+   * wizard's survey answers as a free-form JSON blob scoped to the submitting
+   * user. Skippable by construction: completion never depends on this, and
+   * nothing in M3 reads it back -- it's captured for future defaults/tour work.
+   * Requires only a valid (unlocked) session, since the owner submits their own
+   * answers; no dedicated permission gates a user's own survey.
+   */
+  app.post('/setup/survey', async (c) => {
+    const actor = await requireUnlocked(c, db);
+    if (actor instanceof Response) return actor;
+
+    const payload = (await c.req.json().catch(() => undefined)) as unknown;
+    if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+      return c.json({ error: 'A JSON object body is required' }, 400);
+    }
+
+    await db
+      .insertInto('onboarding_responses')
+      .values({
+        id: crypto.randomUUID(),
+        user_id: actor.userId,
+        payload: JSON.stringify(payload),
+      })
+      .execute();
+
+    return c.json({ ok: true }, 201);
   });
 
   return app;

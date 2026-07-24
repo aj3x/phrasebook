@@ -177,6 +177,18 @@ export interface InstanceSetupTable {
   created_at: Generated<Date>;
 }
 
+/**
+ * Added by migrations/0017_onboarding_responses.ts. The optional first-run
+ * questionnaire capture: `payload` is a free-form JSON blob (read back as an
+ * object, written as a JSON string), owner-scoped, nothing keys off it in M3.
+ */
+export interface OnboardingResponsesTable {
+  id: string;
+  user_id: string;
+  payload: ColumnType<Record<string, unknown>, string, string>;
+  created_at: Generated<Date>;
+}
+
 export interface Database {
   organizations: OrganizationsTable;
   workspaces: WorkspacesTable;
@@ -195,4 +207,5 @@ export interface Database {
   permissions: PermissionsTable;
   role_permissions: RolePermissionsTable;
   instance_setup: InstanceSetupTable;
+  onboarding_responses: OnboardingResponsesTable;
 }

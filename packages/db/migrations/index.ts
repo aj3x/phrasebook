@@ -15,6 +15,7 @@ import { migration0013Comments } from './0013_comments';
 import { migration0014Permissions } from './0014_permissions';
 import { migration0015RoleAssignmentWorkspaceScope } from './0015_role_assignment_workspace_scope';
 import { migration0016InstanceSetup } from './0016_instance_setup';
+import { migration0017OnboardingResponses } from './0017_onboarding_responses';
 
 export const migrations: Record<string, Migration> = {
   '0001_organizations': migration0001Organizations,
@@ -33,4 +34,5 @@ export const migrations: Record<string, Migration> = {
   '0014_permissions': migration0014Permissions,
   '0015_role_assignment_workspace_scope': migration0015RoleAssignmentWorkspaceScope,
   '0016_instance_setup': migration0016InstanceSetup,
+  '0017_onboarding_responses': migration0017OnboardingResponses,
 };
