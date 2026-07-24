@@ -25,7 +25,7 @@ phrasebook/
 └── README.md
 ```
 
-Grows over time. `apps/editor/` arrives at M2, `apps/cli/` at M3, `packages/adapters/*` at M3.
+Grows over time. `apps/editor/` arrives at M2, `apps/cli/` at M4, `packages/adapters/*` at M4.
 
 ## Package boundaries — why each exists
 
@@ -71,7 +71,7 @@ Small (~90MB), official, matches the runtime.
 ## Naming
 
 - **Product name in code:** `phrasebook`. Matches the repo. Package scope `@phrasebook/*`. Rename later if we pick a different product name — string is grep-replaceable.
-- **CLI binary (M3):** `phrasebook` with `pb` alias. (`tms` in the spec is the working name — swappable.)
+- **CLI binary (M4):** `phrasebook` with `pb` alias. (`tms` in the spec is the working name — swappable.)
 
 ## Node compat notes (Bun caveats to watch)
 

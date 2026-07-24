@@ -4,7 +4,7 @@ import {
   getCoreRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Fragment, type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
+import { Fragment, type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { KeyRow, ReviewOutcome, SaveOutcome } from './api';
 import { type PluralEditState, computePluralEditState, reassemblePluralEdit } from './icuEditing';
 
@@ -141,8 +141,9 @@ export function KeyTable({
   const [reviewErrors, setReviewErrors] = useState<Record<string, string>>({});
   const cellRefs = useRef(new Map<string, HTMLTableCellElement>());
 
-  const displayRows = rows.map((row) =>
-    overrides[row.key] ? { ...row, ...overrides[row.key] } : row,
+  const displayRows = useMemo(
+    () => rows.map((row) => (overrides[row.key] ? { ...row, ...overrides[row.key] } : row)),
+    [rows, overrides],
   );
   const table = useReactTable({ data: displayRows, columns, getCoreRowModel: getCoreRowModel() });
   const tableRows = table.getRowModel().rows;

@@ -1,5 +1,7 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
+import { CommentThread } from '../src/CommentThread';
 import { KeyTable, type KeyTableProps } from '../src/KeyTable';
 import type { KeyRow, ReviewOutcome, SaveOutcome } from '../src/api';
 
@@ -520,6 +522,42 @@ describe('KeyTable', () => {
 
       screen.getByText('thread for c.d');
       expect(screen.queryByText('thread for a.b')).toBeNull();
+    });
+
+    // Regression: `data` passed to useReactTable must stay referentially
+    // stable across renders that don't actually change the rows (toggling
+    // comments open, e.g.) -- react-table treats a new array as a real data
+    // change, and re-rendering the real CommentThread (unlike the inline
+    // stub above) is what surfaces the resulting render loop.
+    test('opening a real CommentThread does not loop', async () => {
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const fetchImpl = (async () =>
+        new Response(JSON.stringify({ comments: [] }), { status: 200 })) as unknown as typeof fetch;
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <KeyTable
+            rows={rows}
+            onSave={neverUsedOnSave}
+            locale="fr"
+            renderComments={(key) => (
+              <CommentThread
+                endpoint="https://api.example.com"
+                project="demo"
+                namespace="common"
+                locale="fr"
+                commentKey={key}
+                fetchImpl={fetchImpl}
+              />
+            )}
+          />
+        </QueryClientProvider>,
+      );
+
+      const firstRow = screen.getByText('a.b').closest('tr') as HTMLElement;
+      fireEvent.click(within(firstRow).getByRole('button', { name: /comments/i }));
+
+      await waitFor(() => screen.getByText(/no comments yet/i), { timeout: 3000 });
     });
   });
 });

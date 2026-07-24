@@ -152,7 +152,12 @@ export const DEV_ADMIN_PASSWORD = 'phrasebook-dev-admin';
  * rolling that hash here would be both wrong and a second implementation
  * to keep in sync with whatever better-auth does internally.
  */
-export async function seedAdminUser(auth: Auth, db: Kysely<Database>, email = DEV_ADMIN_EMAIL, password = DEV_ADMIN_PASSWORD): Promise<void> {
+export async function seedAdminUser(
+  auth: Auth,
+  db: Kysely<Database>,
+  email = DEV_ADMIN_EMAIL,
+  password = DEV_ADMIN_PASSWORD,
+): Promise<void> {
   const existingUser = await db
     .selectFrom('user')
     .select('id')

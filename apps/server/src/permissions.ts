@@ -26,8 +26,7 @@ export function parsePermission(pattern: string): Permission {
   const [, resource, action] = PERMISSION_PATTERN.exec(pattern) ?? [];
   if (resource === undefined || action === undefined) {
     throw new Error(
-      `Invalid permission "${pattern}": expected "<resource>:<action>", ` +
-        'each segment lowercase snake_case or "*"',
+      `Invalid permission "${pattern}": expected "<resource>:<action>", each segment lowercase snake_case or "*"`,
     );
   }
 

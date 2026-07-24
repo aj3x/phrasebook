@@ -148,9 +148,9 @@ A freshly hosted instance, empty database, no seed:
 8. **Wildcards work as specified**: `*:*` (Owner) passes everything; `project:*` passes every project action; a role holding only concrete grants is refused the ones it lacks. Exhaustively tested at the matcher level.
 9. **Scope holds across three dimensions**: a grant scoped to one workspace/project/locale doesn't reach another, and NULL still means "all" per dimension. Owner-only actions (`workspace:create`, `org:*`, `role:*`) are refused to an Admin server-side.
 10. **The last Owner cannot be locked, demoted, or deleted** — nobody can brick their own instance.
-10. **Resumability:** creating owner+org then abandoning the wizard, then logging back in, lands in the app (empty project picker + "create your first project"), not a broken or re-triggered wizard.
-11. `GET /v1/temp/seed` is gone (see cleanup note below).
-12. `pnpm test` passes on every touched package; `pnpm typecheck`/`pnpm lint` exit 0; `vite build` succeeds. Same bar as M1/M2.
+11. **Resumability:** creating owner+org then abandoning the wizard, then logging back in, lands in the app (empty project picker + "create your first project"), not a broken or re-triggered wizard.
+12. `GET /v1/temp/seed` is gone (see cleanup note below).
+13. `pnpm test` passes on every touched package; `pnpm typecheck`/`pnpm lint` exit 0; `vite build` succeeds. Same bar as M1/M2.
 
 ## Security spotlight — the one-time bootstrap
 
