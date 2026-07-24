@@ -199,8 +199,12 @@ The last remaining Owner cannot be locked, demoted, or deleted. Enforced server-
 
 *As built* (`apps/server/src/owner-guard.ts`): a single data-layer chokepoint `assertNotLastOwner(db, userId, action)` rather than per-endpoint checks, refusing when an action would leave zero *active* (unlocked) Owners — a locked Owner doesn't count, so the last working Owner stays protected even beside a disabled Owner row. Takes a `Kysely | Transaction` so it runs inside the mutation's own tx (atomic check+write, no TOCTOU). No lock/delete/revoke endpoint exists in M3 yet, so — like step 5 — the guard is built and exhaustively tested here and wired into step 8's role-revocation path. The invariant is "≥1 active Owner always remains", covering demote/lock/delete uniformly.
 
-**8. Role assignment endpoints**
+**8. Role assignment endpoints** — **done**
 `role_assignment:*` needs a surface for Admins to actually use it: assign/revoke a role for a user, scoped to the caller's workspace. Gated on `role_assignment:create`/`:revoke`, with the scope check preventing an Admin from granting outside their own workspace — and from granting Owner, which lives behind `role:*`. This is what makes decision 1b real rather than theoretical.
+
+*As built* (`apps/server/src/routes/role-assignments.ts`): `POST /v1/role-assignments` and `DELETE /v1/role-assignments/:id`. The scope gate is granting-**containment** (a deliberately different rule from `hasPermission`'s reach check): a grant scoped to workspace W can assign/revoke only *within* W and specifically **cannot** create an instance-wide (`workspace_id NULL` = all) assignment, since a concrete grant doesn't contain NULL. The Owner carve-out is enforced as an extra `role:create` check (only Owner holds `role:*`) on both assign and revoke, so `role_assignment:*` alone can't mint or strip an Owner. Revoke runs the step-7 `assertNotLastOwner` guard inside its transaction → **409** if it would demote the last active Owner. RBAC stays `db`-direct (consistent with session middleware / permission gates), not routed through the translation-domain `Store`; `requireUnlocked` was exported so the handler resolves the actor before a scope check whose scope comes from the DB row. 17 route tests cover assign/revoke, containment both directions, Owner-escalation block, duplicate (409), unknown role/user, locked actor, and last-Owner protection.
+
+**Phase A is now complete** (steps 1–8). The authorization core is fully reworked to permissions; onboarding (Phase B) can build on it.
 
 ### Phase B — Onboarding backend
 
